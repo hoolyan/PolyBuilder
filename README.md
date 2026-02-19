@@ -28,11 +28,14 @@ python polybuilder.py --F <face_count> --g6_path <input_file> --export_objs --ou
 | `--output_path` | No | Directory where results and OBJ files will be saved |
 | `--graph_subset_range` | No | Restrict analysis to a subset of graphs by index range (e.g., `0 100` analyzes the first 100 graphs). |
 | `--combination_limit` | No | Maximum combinations to explore per graph (default: unlimited). Graphs exceeding this limit are rejected. |
+| `--allow_coplanar_dihedrals` | No | Allow dihedral angles of 180° (coplanar faces). By default these are rejected to avoid creating faces that are not regular polygons. |
+| `--disable_overlap_check` | No | Skip the overlap detection check during realization validation. |
 | `--export_objs` | No | Export valid realizations as OBJ files for 3D visualization |
+| `--export_invalid_objs` | No | Export invalid realizations as OBJ files for 3D visualization |
 | `--display_dihedral_solutions` | No | Print detailed dihedral angle solutions found during solving |
 | `--show_progress_details` | No | Display verbose progress information during computation |
-| `--save_checkpoint` | No | Path to save checkpoint file after every graph (e.g., `checkpoint.json`). Enables resuming interrupted runs. |
-| `--resume_from` | No | Resume from a previous checkpoint file. Restores all progress and results from the last saved state. |
+| `--save_checkpoint` | No | Path to save checkpoint file after every graph (e.g., `checkpoint.json`). Automatically saves checkpoint to the same file every time a graph is processed. If `--resume_from` is specified without `--save_checkpoint`, the checkpoint will be saved back to the resume path. |
+| `--resume_from` | No | Resume from a previous checkpoint file. Restores all progress and results from the last saved state. If `--save_checkpoint` is not specified, checkpoint updates will be saved to this path. |
 
 ### Examples
 
@@ -113,14 +116,13 @@ MODULE BREAKDOWN
    - **Spherical triangle solving**: `SphericalTriangle` class with `compute_SSS()` and `compute_SAS()`
    - **Triangulation**: `SphericalTriangulation` class with `solve_triangulation()` and `get_dihedral()`
    - **Main orchestrator**: `extend_solved_vertices()` - branches solutions based on vertex states
-   - **Helpers**: `num_solutions()`, `calculate_dihedral()`, `calculate_possible_dihedrals()`
+   - **Helpers**: `num_solutions()`, `has_valid_dihedrals()`, `calculate_dihedral()`, `calculate_possible_dihedrals()`
 
 ### 3. `realization_constructor.py` (~483 lines)
    - **3D coordinate construction**: `construct_polyhedron_realization()` with 4 embedded transforms
    - **Edge alignment**: `rotate_face_about_normal_to_align_edge()` with precision fix (rtol=0)
    - **Validation**: `is_valid_realization()` - checks unit edges and face regularity
    - **Export**: `export_regular_faced_polyhedron_to_OBJ()` - writes OBJ format files
-   - **Sanity check**: `has_valid_dihedrals()` - rejects impossible angles
 
 ### 4. `symmetry_checker.py` (~52 lines)
    - **Graph construction**: `build_vertex_graph_with_dihedrals()` with dihedral attributes
@@ -133,6 +135,10 @@ MODULE BREAKDOWN
    - **Deserialization**: `load_checkpoint()` - loads checkpoint from JSON file
    - **Special handling**: Manages float edge cases (infinity, NaN) for JSON compatibility
 
+### 6. `utilities.py` (~60 lines)
+   - **Formatting**: `format_face_types()` - converts face type lists to human-readable summaries (e.g., `[3 triangles, 2 squares, 1 pentagon]`)
+   - **Display**: `format_dihedral_degrees()` - converts dihedral angles from radians to degrees with reduced precision (4 decimal places by default)
+
 ## Import Structure
 
 `polybuilder.py` imports all modules:
@@ -142,6 +148,7 @@ from dihedral_solver import *
 from realization_constructor import *
 from symmetry_checker import *
 from checkpoint import *
+from utilities import *
 ```
 
 **Dependency graph**:
@@ -152,6 +159,7 @@ dihedral_solver.py → data_structures
 realization_constructor.py → data_structures
 symmetry_checker.py → data_structures + networkx
 checkpoint.py → json
+utilities.py → collections
 ```
 
 ## Author

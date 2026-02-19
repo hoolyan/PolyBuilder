@@ -144,7 +144,6 @@ class RegularFacedPolyhedron:
         original and copy.
 
         Note: This function creates tons of circular references between vertices, edges, and faces.
-        This is probably the biggest limiting factor performance-wise, likely why this program has difficulty with F > 11.
         A more efficient implementation could involve storing additional indices instead of direct references.
         """
         v_map: Dict[int, Vertex] = {}
@@ -260,21 +259,7 @@ def enumerate_embedding_faces(embedding: nx.algorithms.planarity.PlanarEmbedding
     return faces
 
 
-def read_g6_graphs(path: str) -> List[nx.Graph]:
-    """Read a .g6 file and return a list of NetworkX graphs."""
-    graphs = []
-    with open(path, "r") as f:
-        for line in f:
-            s = line.strip()
-            if not s:
-                continue
-            # networkx >= 2.6
-            G = nx.from_graph6_bytes(s.encode())
-            graphs.append(G)
-    return graphs
-
-
-def read_g6_graph_subset(path: str, start_index: int, end_index: int) -> List[nx.Graph]:
+def read_g6_graphs(path: str, start_index: int, end_index: int) -> List[nx.Graph]:
     """Read a specific subset of graphs from a .g6 file by index range."""
     graphs = []
     with open(path, "r") as f:

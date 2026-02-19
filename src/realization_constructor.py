@@ -13,35 +13,6 @@ from typing import Tuple
 from data_structures import Vertex, Edge, Face, RegularFacedPolyhedron, v_normalize, v_dot, v_cross, v_norm
 
 
-def has_valid_dihedrals(solution: RegularFacedPolyhedron) -> bool:
-    """
-    Reject obvious impossible dihedrals:
-    - multiples of pi (coplanar / overlapping)
-    - arc sum at vertex cannot physically accommodate dihedral
-    """
-    for e in solution.edges:
-        if not e.has_assigned_dihedral:
-            continue
-        d = abs(e.dihedral)
-        if abs(d) < 1e-12 or abs(d - math.pi) < 1e-12 or abs(d - 2.0 * math.pi) < 1e-12:
-            return False
-        
-    for v in solution.vertices:
-        arc_1 = math.pi - 2.0 * math.pi / len(v.faces[0].vertices)
-        arc_2 = math.pi - 2.0 * math.pi / len(v.faces[1].vertices)
-        arc_3 = math.pi - 2.0 * math.pi / len(v.faces[2].vertices)
-        if len(v.edges) == 3:
-            if arc_1 >= arc_2 + arc_3 - 1e-12:
-                print(f"Vertex {v.index} has invalid arc sum: {arc_1} >= {arc_2} + {arc_3}, Face types: {len(v.faces[0].vertices)}, {len(v.faces[1].vertices)}, {len(v.faces[2].vertices)}")
-                raise ValueError("Invalid arc sum. SphericalTriangulation should have returned invalid realization")
-            if arc_2 >= arc_1 + arc_3 - 1e-12:
-                print(f"Vertex {v.index} has invalid arc sum: {arc_1} >= {arc_2} + {arc_3}, Face types: {len(v.faces[0].vertices)}, {len(v.faces[1].vertices)}, {len(v.faces[2].vertices)}")
-                raise ValueError("Invalid arc sum. SphericalTriangulation should have returned invalid realization")
-            if arc_3 >= arc_1 + arc_2 - 1e-12:
-                print(f"Vertex {v.index} has invalid arc sum: {arc_1} >= {arc_2} + {arc_3}, Face types: {len(v.faces[0].vertices)}, {len(v.faces[1].vertices)}, {len(v.faces[2].vertices)}")
-                raise ValueError("Invalid arc sum. SphericalTriangulation should have returned invalid realization")
-    return True
-
 def construct_polyhedron_realization(solution: RegularFacedPolyhedron) -> RegularFacedPolyhedron:
     """
     Construct polyhedron by building individual face transforms along BFS tree paths.
@@ -490,9 +461,12 @@ def export_regular_faced_polyhedron_to_OBJ(model: RegularFacedPolyhedron, output
             f.write(face_line + "\n")
 
 
-def is_valid_realization(solution: RegularFacedPolyhedron) -> Tuple[bool, str]:
+def is_valid_realization(solution: RegularFacedPolyhedron, strict=False) -> Tuple[bool, str]:
     """
     Validate that a realization has unit edges and regular face geometry.
+    Non-strict mode only ensures faces are regular polygons.
+    Strict mode also checks for other geometric issues that violate the definitions of a valid polyhedron (edges shared by more than two faces, overlapping vertices, etc.)
+    Self-intersection currently not checked, but could be added in the future, perhaps as a separate category of strictness level.
     """
     # Unit edges
     for e in solution.edges:
@@ -504,13 +478,35 @@ def is_valid_realization(solution: RegularFacedPolyhedron) -> Tuple[bool, str]:
         if abs(L - 1.0) > 1e-6:
             return False, f"Edge {e.index} length is not 1: {L}"
         
-    # Vertex position checks
-    for v in solution.vertices:
-        for other_v in solution.vertices:
-            if v.index == other_v.index or not v.constructed or not other_v.constructed:
-                continue
-            if np.linalg.norm(v.pos - other_v.pos) < 1e-10:
-                return False, f"Vertices {v.index} and {other_v.index} are overlapping."
+    # Two vertices, edges, or faces sharing the same position indicates self-intersection or overlap. This is not an exhaustive check for self-intersection.
+    if strict:
+        for v in solution.vertices:
+            for other_v in solution.vertices:
+                if v.index == other_v.index or not v.constructed or not other_v.constructed:
+                    continue
+                if np.linalg.norm(v.pos - other_v.pos) < 1e-10:
+                    return False, f"Vertices {v.index} and {other_v.index} are overlapping."
+            for e in solution.edges:
+                if np.linalg.norm(v.pos - e.pos) < 1e-10:
+                    return False, f"Vertex {v.index} and Edge {e.index} are overlapping."
+            for f in solution.faces:
+                if np.linalg.norm(v.pos - f.pos) < 1e-10:
+                    return False, f"Vertex {v.index} and Face {f.index} are overlapping."
+        for e in solution.edges:
+            for other_e in solution.edges:
+                if e.index == other_e.index or not e.constructed or not other_e.constructed:
+                    continue
+                if np.linalg.norm(e.pos - other_e.pos) < 1e-10:
+                    return False, f"Edges {e.index} and {other_e.index} are overlapping."
+            for f in solution.faces:
+                if np.linalg.norm(e.pos - f.pos) < 1e-10:
+                    return False, f"Edge {e.index} and Face {f.index} are overlapping."
+        for f in solution.faces:
+            for other_f in solution.faces:
+                if f.index == other_f.index or not f.constructed or not other_f.constructed:
+                    continue
+                if np.linalg.norm(f.pos - other_f.pos) < 1e-10:
+                    return False, f"Faces {f.index} and {other_f.index} are overlapping."
         
     # Face radii checks
     for f in solution.faces:

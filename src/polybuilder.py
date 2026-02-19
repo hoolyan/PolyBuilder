@@ -20,7 +20,6 @@ import math
 from typing import List, Tuple
 
 import networkx as nx
-import numpy as np
 
 from tqdm import tqdm
 
@@ -29,6 +28,7 @@ from dihedral_solver import *
 from realization_constructor import *
 from symmetry_checker import *
 from checkpoint import *
+from utilities import *
 
 
 # ============================================================
@@ -39,12 +39,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--F", type=int, help="Face count")
     parser.add_argument("--g6_path", type=str, help="Input .g6 file from plantri")
-    parser.add_argument("--graph_subset_range", type=int, nargs=2, default=[0, None], help="Range of graph indices to process (0-based, inclusive start, exclusive end)")
+    parser.add_argument("--graph_subset_range", type=int, nargs=2, default=[None, None], help="Range of graph indices to process (0-based, inclusive start, exclusive end)")
     parser.add_argument("--combination_limit", type=int, default=None, help="Specify a limit on the number of combinations that can be explored during dihedral solution. Graph is rejected if this is exceeded.")
+    parser.add_argument("--allow_coplanar_dihedrals", action="store_true", help="Allow dihedrals of 180 degrees, which correspond to coplanar faces.")
+    parser.add_argument("--disable_overlap_check", action="store_true", help="Disable the check for overlapping features during construction.")
     parser.add_argument("--show_progress_details", action="store_true", help="Print progress info")
     parser.add_argument("--display_dihedral_solutions", action="store_true", help="Display dihedral solutions for each graph in each category after processing is complete.")
-    parser.add_argument("--export_objs", action="store_true", help="Export OBJs of realizable solutions")
-    parser.add_argument("--output_path", type=str, help="Output path (currently just objs)")
+    parser.add_argument("--export_objs", action="store_true", help="Export OBJs of valid realizations")
+    parser.add_argument("--export_invalid_objs", action="store_true", help="Export OBJs of invalid realizations")
+    parser.add_argument("--output_path", type=str, help="Output path (currently just used for OBJ exports)")
     parser.add_argument("--resume_from", type=str, default=None, help="Resume from checkpoint file (e.g., checkpoint.json)")
     parser.add_argument("--save_checkpoint", type=str, default=None, help="Path to save checkpoint after every batch (e.g., checkpoint.json)")
     args = parser.parse_args()
@@ -56,19 +59,25 @@ def main():
     show_progress_details = args.show_progress_details
     display_dihedral_solutions = args.display_dihedral_solutions
     export_objs = args.export_objs
+    export_invalid_objs = args.export_invalid_objs
     output_path = args.output_path
     combination_limit = args.combination_limit
-    resume_from = args.resume_from
+    allow_coplanar_dihedrals = args.allow_coplanar_dihedrals
+    disable_overlap_check = args.disable_overlap_check
+    resume_from_path = args.resume_from
     save_checkpoint_path = args.save_checkpoint
-    if export_objs and output_path is None:
+    if (export_objs or export_invalid_objs) and output_path is None:
         raise ValueError("Output path is required when exporting OBJs")
-    
+    # Assume they want to just pick up where they left off, that way they don't have to specify both args and the same path twice. If they really want to specify a different save path, they can still do that by providing both args.
+    if (resume_from_path and not save_checkpoint_path):
+        save_checkpoint_path = resume_from_path
+
     print()
     
     # Handle checkpoint resume
-    if resume_from:
-        print(f"Loading checkpoint from {resume_from}")
-        checkpoint = load_checkpoint(resume_from)
+    if resume_from_path:
+        print(f"Loading checkpoint from {resume_from_path}")
+        checkpoint = load_checkpoint(resume_from_path)
         
         # Verify checkpoint settings match current run
         if checkpoint.run_settings.get("F") != F:
@@ -96,11 +105,12 @@ def main():
             print(f"  - {len(checkpoint.graphs_with_asymmetric_realizations)} graphs with asymmetric realizations")
     
     print("Loading graphs from", g6_path)
+
     graphs:List[nx.Graph] = []
-    if graph_subset_start is not None:
-        graphs = read_g6_graph_subset(g6_path, graph_subset_start, graph_subset_end)
-    else:
-        graphs = read_g6_graphs(g6_path)
+    if graph_subset_start is None:
+        graph_subset_start = 0
+    graphs = read_g6_graphs(g6_path, graph_subset_start, graph_subset_end)
+
     print("Successfully loaded", len(graphs), "graphs")
 
     # Graphs of interest
@@ -116,7 +126,7 @@ def main():
     graphs_with_asymmetric_realizations_indices_faces_and_solutions: List[Tuple[int, List[str], List[List[float]]]] = []
     
     # Restore from checkpoint if resuming
-    if resume_from:
+    if resume_from_path:
         graphs_unsolved_indices_faces_and_solutions = list(checkpoint.graphs_unsolved)
         graphs_with_dihedral_solutions_indices_faces_and_solutions = list(checkpoint.graphs_with_dihedral_solutions)
         graphs_with_realizations_indices_faces_and_solutions = list(checkpoint.graphs_with_realizations)
@@ -167,7 +177,7 @@ def main():
                 face_type = str(len(face.vertices)) + "-gon"
             face_str_list.append(face_type)
             
-        if show_progress_details: print(f"Graph {gi}: Faces: {face_str_list}")
+        if show_progress_details: print(f"Graph {gi}: Faces: {format_face_types(face_str_list)}")
         solution_list: List[RegularFacedPolyhedron] = [poly]
         extended = extend_solved_vertices(solution_list)
 
@@ -185,7 +195,7 @@ def main():
             r_indices_to_remove = []
             for r_index in range(len(solution_list)):
                 r = solution_list[r_index]
-                if not has_valid_dihedrals(r):
+                if not has_valid_dihedrals(r, not allow_coplanar_dihedrals):
                     if show_progress_details: print(f"Graph {gi}: solution failed dihedral solution validity check at step {extend_step}")
                     r_indices_to_remove.append(r_index)
             if not solution_list:
@@ -217,14 +227,14 @@ def main():
                     break
                     
                 for sol in extended:
-                    dihedrals = [e.dihedral * 180.0 / np.pi if e.has_assigned_dihedral else None for e in sol.edges]
+                    dihedrals = format_dihedral_degrees([e.dihedral if e.has_assigned_dihedral else None for e in sol.edges])
                     dihedrals_assigned = sum(1 for e in sol.edges if e.has_assigned_dihedral)
                     if show_progress_details: print(f"Graph {gi}: {dihedrals_assigned}/{len(sol.edges)} dihedrals assigned in incomplete solution:\n{dihedrals}")
             for s_index, s in enumerate(solution_list):
-                dihedrals = [e.dihedral * 180.0 / np.pi if e.has_assigned_dihedral else None for e in s.edges]
+                dihedrals = format_dihedral_degrees([e.dihedral if e.has_assigned_dihedral else None for e in s.edges])
                 if show_progress_details: print(f"Graph {gi}, Realization {s_index}: Base solution dihedrals:\n{dihedrals}")
             for s_index, s in enumerate(extended):
-                dihedrals = [e.dihedral * 180.0 / np.pi if e.has_assigned_dihedral else None for e in s.edges]
+                dihedrals = format_dihedral_degrees([e.dihedral if e.has_assigned_dihedral else None for e in s.edges])
                 if show_progress_details: print(f"Graph {gi}, Realization {s_index}: Extended solution dihedrals:\n{dihedrals}")
             extend_step += 1
 
@@ -236,7 +246,7 @@ def main():
         if show_progress_details: print(f"Graph {gi}: {len(solution_list)} complete solutions with valid dihedral solutions")
 
         for sol in solution_list:
-            dihedrals = [e.dihedral * 180.0 / np.pi if e.has_assigned_dihedral else None for e in sol.edges]
+            dihedrals = format_dihedral_degrees([e.dihedral if e.has_assigned_dihedral else None for e in sol.edges])
             if show_progress_details: print(f"Solution dihedrals:\n{dihedrals}")
         
         # Removing inside-out/mirror duplicates
@@ -269,7 +279,7 @@ def main():
                         break
             elif check_is_inside_out_copy and r_avg_dihedral > math.pi:
                 if show_progress_details: print(f"Removing duplicate solution with average dihedral > pi: {r_avg_dihedral}")
-                dihedrals = [e.dihedral * 180.0 / np.pi if e.has_assigned_dihedral else None for e in r.edges]
+                dihedrals = format_dihedral_degrees([e.dihedral if e.has_assigned_dihedral else None for e in r.edges])
                 if show_progress_details: print(f"Duplicate solution dihedrals:\n{dihedrals}")
                 duplicate_indices.append(r_index)
 
@@ -293,13 +303,13 @@ def main():
         for s_index in range(len(solution_list)):
             s = solution_list[s_index]
             model = construct_polyhedron_realization(s)
-            valid, validation_message = is_valid_realization(model)
+            valid, validation_message = is_valid_realization(model, not disable_overlap_check)
             if valid:
                 realized_solutions.append(model)
             else:
                 if show_progress_details: print(f"Realization of graph {gi} solution {s_index} is invalid: {validation_message}")
-                if export_objs: # Just because the realization is invalid doesn't mean it won't be interesting.
-                    export_regular_faced_polyhedron_to_OBJ(model, output_path, f"graph_{gi}_realization_{s_index}_invalid.obj")
+                if export_invalid_objs: # Just to see what's wrong with the invalid ones.
+                    export_regular_faced_polyhedron_to_OBJ(model, output_path, f"graph_{gi}_invalid_realization_{s_index - len(realized_solutions)}.obj")
 
         # Part 3: Checking for symmetry and exporting results
 
@@ -339,41 +349,74 @@ def main():
             )
             save_checkpoint(checkpoint_data, save_checkpoint_path)
 
+    # Save checkpoint at the end of the run as well, currently just to save the graph index.
+    if save_checkpoint_path:
+        checkpoint_data = CheckpointData(
+            run_settings={
+                "F": F,
+                "g6_path": g6_path,
+                "combination_limit": combination_limit,
+                "export_objs": export_objs,
+                "show_progress_details": show_progress_details,
+            },
+            current_graph_index=graph_subset_start + len(graphs),
+            graphs_unsolved=graphs_unsolved_indices_faces_and_solutions,
+            graphs_with_dihedral_solutions=graphs_with_dihedral_solutions_indices_faces_and_solutions,
+            graphs_with_realizations=graphs_with_realizations_indices_faces_and_solutions,
+            graphs_with_asymmetric_realizations=graphs_with_asymmetric_realizations_indices_faces_and_solutions,
+        )
+        save_checkpoint(checkpoint_data, save_checkpoint_path)
     
     pbar.close()
 
     print(f"\nResults:")
-    print(f"\nGraphs unsolved: {len(graphs_unsolved)}")
+    if (resume_from_path):
+        print(f"\nNew unsolved graphs: {len(graphs_unsolved)}")
+        print(f"Total unsolved graphs: {len(graphs_unsolved_indices_faces_and_solutions)}")
+    else:
+        print(f"\nUnsolved graphs: {len(graphs_unsolved_indices_faces_and_solutions)}")
     for gi, face_str_list, dihedrals in graphs_unsolved_indices_faces_and_solutions:
-        print(f"Graph {gi} with faces {face_str_list} could not be solved.")
+        print(f"Graph {gi} with faces {format_face_types(face_str_list)} could not be solved.")
         if display_dihedral_solutions:
             for r_index, dihedral_set in enumerate(dihedrals):
-                dihedral_degrees = [d * 180.0 / np.pi if d is not None else None for d in dihedral_set]
+                dihedral_degrees = format_dihedral_degrees(dihedral_set)
                 print(f"Solution {r_index} has dihedrals:\n{dihedral_degrees}")
 
-    print(f"\nGraphs with dihedral solutions: {len(graphs_with_dihedral_solutions)}")
+    if (resume_from_path):
+        print(f"\nNew graphs with dihedral solutions: {len(graphs_with_dihedral_solutions)}")
+        print(f"Total graphs with dihedral solutions: {len(graphs_with_dihedral_solutions_indices_faces_and_solutions)}")
+    else:
+        print(f"\nGraphs with dihedral solutions: {len(graphs_with_dihedral_solutions_indices_faces_and_solutions)}")
     for gi, face_str_list, dihedrals in graphs_with_dihedral_solutions_indices_faces_and_solutions:
-        print(f"Graph {gi} with faces {face_str_list} produced {len(dihedrals)} valid dihedral solutions.")
+        print(f"Graph {gi} with faces {format_face_types(face_str_list)} produced {len(dihedrals)} valid dihedral solution" + ("s" if len(dihedrals) != 1 else "") + ".")
         # Debug: display dihedral solutions
         if display_dihedral_solutions:
             for r_index, dihedral_set in enumerate(dihedrals):
-                dihedral_degrees = [d * 180.0 / np.pi if d is not None else None for d in dihedral_set]
+                dihedral_degrees = format_dihedral_degrees(dihedral_set)
                 print(f"Solution {r_index} has dihedrals:\n{dihedral_degrees}")
 
-    print(f"\nGraphs with realizable solutions: {len(graphs_with_realizations)}")
+    if (resume_from_path):
+        print(f"\nNew graphs with realizable solutions: {len(graphs_with_realizations)}")
+        print(f"Total graphs with realizable solutions: {len(graphs_with_realizations_indices_faces_and_solutions)}")
+    else:
+        print(f"\nGraphs with realizable solutions: {len(graphs_with_realizations_indices_faces_and_solutions)}")
     for gi, face_str_list, dihedrals in graphs_with_realizations_indices_faces_and_solutions:
-        print(f"Graph {gi} with faces {face_str_list} produced {len(dihedrals)} realizable solutions.")
+        print(f"Graph {gi} with faces {format_face_types(face_str_list)} produced {len(dihedrals)} realizable solution" + ("s" if len(dihedrals) != 1 else "") + ".")
         if display_dihedral_solutions:
             for r_index, dihedral_set in enumerate(dihedrals):
-                dihedral_degrees = [d * 180.0 / np.pi if d is not None else None for d in dihedral_set]
+                dihedral_degrees = format_dihedral_degrees(dihedral_set)
                 print(f"Solution {r_index} has dihedrals:\n{dihedral_degrees}")
         
-    print(f"\nGraphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations)}")
+    if (resume_from_path):
+        print(f"\nNew graphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations)}")
+        print(f"Total graphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations_indices_faces_and_solutions)}")
+    else:
+        print(f"\nGraphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations_indices_faces_and_solutions)}")
     for gi, face_str_list, dihedrals in graphs_with_asymmetric_realizations_indices_faces_and_solutions:
-        print(f"Graph {gi} with faces {face_str_list} produced {len(dihedrals)} asymmetric realizations.")
+        print(f"Graph {gi} with faces {format_face_types(face_str_list)} produced {len(dihedrals)} asymmetric realization" + ("s" if len(dihedrals) != 1 else "") + ".")
         if display_dihedral_solutions:
             for r_index, dihedral_set in enumerate(dihedrals):
-                dihedral_degrees = [d * 180.0 / np.pi if d is not None else None for d in dihedral_set]
+                dihedral_degrees = format_dihedral_degrees(dihedral_set)
                 print(f"Solution {r_index} has dihedrals:\n{dihedral_degrees}")
 
     print()

@@ -51,6 +51,35 @@ def num_solutions(vertex: Vertex) -> int:
         else:
             return math.inf # Except for highly specific situations, vertices with >3 missing dihedrals will always have at least one degree of flex.
 
+def has_valid_dihedrals(solution: RegularFacedPolyhedron, strict: bool = True) -> bool:
+    """
+    Reject obvious impossible dihedrals:
+    - multiples of pi (coplanar / overlapping)
+    - arc sum at vertex cannot physically accommodate dihedral
+    """
+    for e in solution.edges:
+        if not e.has_assigned_dihedral:
+            continue
+        d = abs(e.dihedral)
+        if abs(d) < 1e-12 or (abs(d - math.pi) < 1e-12 and strict) or abs(d - 2.0 * math.pi) < 1e-12:
+            return False
+        
+    for v in solution.vertices:
+        arc_1 = math.pi - 2.0 * math.pi / len(v.faces[0].vertices)
+        arc_2 = math.pi - 2.0 * math.pi / len(v.faces[1].vertices)
+        arc_3 = math.pi - 2.0 * math.pi / len(v.faces[2].vertices)
+        if len(v.edges) == 3:
+            if arc_1 >= arc_2 + arc_3 - 1e-12:
+                print(f"Vertex {v.index} has invalid arc sum: {arc_1} >= {arc_2} + {arc_3}, Face types: {len(v.faces[0].vertices)}, {len(v.faces[1].vertices)}, {len(v.faces[2].vertices)}")
+                raise ValueError("Invalid arc sum. SphericalTriangulation should have returned invalid realization")
+            if arc_2 >= arc_1 + arc_3 - 1e-12:
+                print(f"Vertex {v.index} has invalid arc sum: {arc_2} >= {arc_1} + {arc_3}, Face types: {len(v.faces[0].vertices)}, {len(v.faces[1].vertices)}, {len(v.faces[2].vertices)}")
+                raise ValueError("Invalid arc sum. SphericalTriangulation should have returned invalid realization")
+            if arc_3 >= arc_1 + arc_2 - 1e-12:
+                print(f"Vertex {v.index} has invalid arc sum: {arc_3} >= {arc_1} + {arc_2}, Face types: {len(v.faces[0].vertices)}, {len(v.faces[1].vertices)}, {len(v.faces[2].vertices)}")
+                raise ValueError("Invalid arc sum. SphericalTriangulation should have returned invalid realization")
+    return True
+
 def clamp(x, lo=-1.0, hi=1.0):
     return max(lo, min(hi, x))
 
