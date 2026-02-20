@@ -43,13 +43,14 @@ def main():
     parser.add_argument("--combination_limit", type=int, default=None, help="Specify a limit on the number of combinations that can be explored during dihedral solution. Graph is rejected if this is exceeded.")
     parser.add_argument("--allow_coplanar_dihedrals", action="store_true", help="Allow dihedrals of 180 degrees, which correspond to coplanar faces.")
     parser.add_argument("--disable_overlap_check", action="store_true", help="Disable the check for overlapping features during construction.")
+    parser.add_argument("--perform_asymmetry_check", action="store_true", help="Perform the check for symmetries in the realized polyhedra.")
     parser.add_argument("--show_progress_details", action="store_true", help="Print progress info")
     parser.add_argument("--display_dihedral_solutions", action="store_true", help="Display dihedral solutions for each graph in each category after processing is complete.")
     parser.add_argument("--export_objs", action="store_true", help="Export OBJs of valid realizations")
     parser.add_argument("--export_invalid_objs", action="store_true", help="Export OBJs of invalid realizations")
     parser.add_argument("--output_path", type=str, help="Output path (currently just used for OBJ exports)")
-    parser.add_argument("--resume_from", type=str, default=None, help="Resume from checkpoint file (e.g., checkpoint.json)")
-    parser.add_argument("--save_checkpoint", type=str, default=None, help="Path to save checkpoint after every batch (e.g., checkpoint.json)")
+    parser.add_argument("--save_progress", type=str, default=None, help="Path to save progress after every batch (e.g., checkpoint.json)")
+    parser.add_argument("--resume_from", type=str, default=None, help="Resume from a previously saved progress file (e.g., checkpoint.json)")
     args = parser.parse_args()
 
     F = args.F
@@ -64,13 +65,14 @@ def main():
     combination_limit = args.combination_limit
     allow_coplanar_dihedrals = args.allow_coplanar_dihedrals
     disable_overlap_check = args.disable_overlap_check
+    perform_asymmetry_check = args.perform_asymmetry_check
     resume_from_path = args.resume_from
-    save_checkpoint_path = args.save_checkpoint
+    save_progress_path = args.save_progress
     if (export_objs or export_invalid_objs) and output_path is None:
         raise ValueError("Output path is required when exporting OBJs")
     # Assume they want to just pick up where they left off, that way they don't have to specify both args and the same path twice. If they really want to specify a different save path, they can still do that by providing both args.
-    if (resume_from_path and not save_checkpoint_path):
-        save_checkpoint_path = resume_from_path
+    if (resume_from_path and not save_progress_path):
+        save_progress_path = resume_from_path
 
     print()
     
@@ -331,8 +333,8 @@ def main():
         tqdm.write(f"Graph {gi} produced {len(solution_list)} realizable solutions.")
         pbar.set_postfix(passing_graphs=len(graphs_with_realizations_indices_faces_and_solutions), total_realizations=sum(len(r_list) for _, _, r_list in graphs_with_realizations_indices_faces_and_solutions))
         
-        # Save checkpoint after finding something interesting
-        if save_checkpoint_path:
+        # Save progress after finding something interesting
+        if save_progress_path:
             checkpoint_data = CheckpointData(
                 run_settings={
                     "F": F,
@@ -347,10 +349,10 @@ def main():
                 graphs_with_realizations=graphs_with_realizations_indices_faces_and_solutions,
                 graphs_with_asymmetric_realizations=graphs_with_asymmetric_realizations_indices_faces_and_solutions,
             )
-            save_checkpoint(checkpoint_data, save_checkpoint_path)
+            save_checkpoint(checkpoint_data, save_progress_path)
 
-    # Save checkpoint at the end of the run as well, currently just to save the graph index.
-    if save_checkpoint_path:
+    # Save progress at the end of the run as well, currently just to save the graph index.
+    if save_progress_path:
         checkpoint_data = CheckpointData(
             run_settings={
                 "F": F,
@@ -365,7 +367,7 @@ def main():
             graphs_with_realizations=graphs_with_realizations_indices_faces_and_solutions,
             graphs_with_asymmetric_realizations=graphs_with_asymmetric_realizations_indices_faces_and_solutions,
         )
-        save_checkpoint(checkpoint_data, save_checkpoint_path)
+        save_checkpoint(checkpoint_data, save_progress_path)
     
     pbar.close()
 
@@ -407,17 +409,18 @@ def main():
                 dihedral_degrees = format_dihedral_degrees(dihedral_set)
                 print(f"Solution {r_index} has dihedrals:\n{dihedral_degrees}")
         
-    if (resume_from_path):
-        print(f"\nNew graphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations)}")
-        print(f"Total graphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations_indices_faces_and_solutions)}")
-    else:
-        print(f"\nGraphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations_indices_faces_and_solutions)}")
-    for gi, face_str_list, dihedrals in graphs_with_asymmetric_realizations_indices_faces_and_solutions:
-        print(f"Graph {gi} with faces {format_face_types(face_str_list)} produced {len(dihedrals)} asymmetric realization" + ("s" if len(dihedrals) != 1 else "") + ".")
-        if display_dihedral_solutions:
-            for r_index, dihedral_set in enumerate(dihedrals):
-                dihedral_degrees = format_dihedral_degrees(dihedral_set)
-                print(f"Solution {r_index} has dihedrals:\n{dihedral_degrees}")
+    if perform_asymmetry_check:
+        if (resume_from_path):
+            print(f"\nNew graphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations)}")
+            print(f"Total graphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations_indices_faces_and_solutions)}")
+        else:
+            print(f"\nGraphs with asymmetric realizations: {len(graphs_with_asymmetric_realizations_indices_faces_and_solutions)}")
+        for gi, face_str_list, dihedrals in graphs_with_asymmetric_realizations_indices_faces_and_solutions:
+            print(f"Graph {gi} with faces {format_face_types(face_str_list)} produced {len(dihedrals)} asymmetric realization" + ("s" if len(dihedrals) != 1 else "") + ".")
+            if display_dihedral_solutions:
+                for r_index, dihedral_set in enumerate(dihedrals):
+                    dihedral_degrees = format_dihedral_degrees(dihedral_set)
+                    print(f"Solution {r_index} has dihedrals:\n{dihedral_degrees}")
 
     print()
 

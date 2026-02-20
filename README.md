@@ -4,7 +4,7 @@ A tool for constructing and analyzing asymmetric regular-faced polyhedra. This p
 
 ## Overview
 
-PolyBuilder solves the inverse problem: given a combinatorial structure (encoded as a planar graph), find all valid 3D geometric realizations where each face is a regular polygon. It uses spherical geometry and dihedral angle constraints to systematically explore the solution space.
+PolyBuilder uses spherical geometry and dihedral angle constraints to find all possible realizations of polyhedra with regular faces from a given 3-connected planar graph.
 
 ## Requirements
 
@@ -30,12 +30,13 @@ python polybuilder.py --F <face_count> --g6_path <input_file> --export_objs --ou
 | `--combination_limit` | No | Maximum combinations to explore per graph (default: unlimited). Graphs exceeding this limit are rejected. |
 | `--allow_coplanar_dihedrals` | No | Allow dihedral angles of 180° (coplanar faces). By default these are rejected to avoid creating faces that are not regular polygons. |
 | `--disable_overlap_check` | No | Skip the overlap detection check during realization validation. |
+| `--perform_asymmetry_check` | No | Perform a check for non-trivial graph and dihedral symmetries, and display realizations where none were found. |
 | `--export_objs` | No | Export valid realizations as OBJ files for 3D visualization |
 | `--export_invalid_objs` | No | Export invalid realizations as OBJ files for 3D visualization |
 | `--display_dihedral_solutions` | No | Print detailed dihedral angle solutions found during solving |
 | `--show_progress_details` | No | Display verbose progress information during computation |
-| `--save_checkpoint` | No | Path to save checkpoint file after every graph (e.g., `checkpoint.json`). Automatically saves checkpoint to the same file every time a graph is processed. If `--resume_from` is specified without `--save_checkpoint`, the checkpoint will be saved back to the resume path. |
-| `--resume_from` | No | Resume from a previous checkpoint file. Restores all progress and results from the last saved state. If `--save_checkpoint` is not specified, checkpoint updates will be saved to this path. |
+| `--save_progress` | No | Path to save progress file after every graph (e.g., `checkpoint.json`). Automatically saves progress to the same file every time a graph is processed. If `--resume_from` is specified without `--save_progress`, new progress will be saved back to the resume path by default. |
+| `--resume_from` | No | Resume from a previous progress file. Restores all progress and results from the last saved state. If `--save_progress` is not specified, progress updates will be saved to this path. |
 
 ### Examples
 
@@ -44,45 +45,36 @@ python polybuilder.py --F <face_count> --g6_path <input_file> --export_objs --ou
 python polybuilder.py --F 9 --g6_path ../input/input_graphs_f9.g6 --export_objs --output_path ../output/out_f9
 ```
 
+#### Check for asymmetry in realizations:
+```bash
+python polybuilder.py --F 9 --g6_path ../input/input_graphs_f9.g6 --export_objs --output_path ../output/out_f9
+```
+
 #### Explore graphs while viewing solution details:
 ```bash
-python polybuilder.py --F 10 --g6_path ../input/input_graphs_f10.g6 --display_dihedral_solutions --show_progress_details --output_path ../output/out_f10
+python polybuilder.py --F 10 --g6_path ../input/input_graphs_f10.g6 --display_dihedral_solutions --show_progress_details
 ```
 
-#### Limit computational effort:
+#### Long-running analysis with checkpointing:
 ```bash
-python polybuilder.py --F 12 --g6_path ../input/input_graphs_f12.g6 --combination_limit 16 --output_path ../output/out_f12
+python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --save_progress checkpoint.json --graph_subset_range 0 1000000 --export_objs --output_path ../output/out_f13
 ```
 
-#### Long-running analysis with checkpointing (for massive datasets):
+#### Resume from checkpoint after interruption or to continue with a different subset:
 ```bash
-python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --save_checkpoint checkpoint.json --export_objs --output_path ../output/out_f13
+python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --resume_from checkpoint.json --graph_subset_range 1000000 2000000 --export_objs --output_path ../output/out_f13
 ```
 
-#### Resume from checkpoint after interruption:
+#### Limit computational effort when solution space is too large:
 ```bash
-python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --resume_from checkpoint.json --save_checkpoint checkpoint.json --export_objs --output_path ../output/out_f13
-```
-
-### Checkpointing: Resume Long Runs
-
-For massive datasets (e.g., 96 million graphs for F=13), processing can take days. Use checkpointing to save progress and resume safely:
-
-**First run:** Save checkpoint after every graph processed
-```bash
-python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --save_checkpoint checkpoint.json --export_objs --output_path ../output/out_f13
-```
-
-**Resume after interruption:** Restores all results and continues from where you left off
-```bash
-python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --resume_from checkpoint.json --save_checkpoint checkpoint.json --export_objs --output_path ../output/out_f13
+python polybuilder.py --F 18 --g6_path ../input/input_graphs_f18.g6 --allow_coplanar_dihedrals --combination_limit 16
 ```
 
 **How it works:**
-- Checkpoint saves: run settings, current progress index, and all accumulated results (unsolved graphs, dihedral solutions, realizations, asymmetric realizations)
-- On resume: validates that F and g6_path match the checkpoint, then continues from the saved index
-- `--graph_subset_range` is ignored when resuming (checkpoint position takes precedence)
-- Checkpoint file is JSON format and human-readable
+- Progress saves: run settings, current progress index, and all accumulated results (unsolved graphs, dihedral solutions, realizations, asymmetric realizations)
+- On resume: validates that F and g6_path match the F and g6_path specified in a progress file, then continues from the saved index
+- `--graph_subset_range` start index is ignored when resuming from a progress file if the start index is earlier than the checkpoint index to prevent redundant data
+- Progress file is JSON format and human-readable
 
 ### Input: Generating Graph Files
 
@@ -100,9 +92,7 @@ plantri -pg 10 input_graphs_f10.g6
 ### Output
 
 Results are saved to the specified output directory containing:
-- Solution metadata and dihedral angles
-- OBJ files (if `--export_objs` is specified) for 3D model visualization
-- Summary statistics for each processed graph
+- OBJ files (if `--export_objs` or `--export_invalid_objs` is specified) for 3D model visualization
 
 MODULE BREAKDOWN
 ================
