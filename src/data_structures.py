@@ -260,20 +260,49 @@ def enumerate_embedding_faces(embedding: nx.algorithms.planarity.PlanarEmbedding
 
 
 def read_g6_graphs(path: str, start_index: int, end_index: int) -> List[nx.Graph]:
-    """Read a specific subset of graphs from a .g6 file by index range."""
+    """
+    Read a specific subset of graphs from a .g6 file by index range.
+    
+    Uses mmap to handle large files safely—Windows pages on demand
+    instead of thrashing when skipping to high indices.
+    """
+    import mmap
+    
     graphs = []
-    with open(path, "r") as f:
-        for i, line in enumerate(f):
-            if i < start_index:
-                continue
-            if end_index is not None and i >= end_index:
-                break
-            s = line.strip()
-            if not s:
-                raise ValueError(f"Graph at index {i} is empty")
-            # networkx >= 2.6
-            G = nx.from_graph6_bytes(s.encode())
-            graphs.append(G)
+    
+    with open(path, "rb") as f:
+        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as m:
+            # Count lines until we reach start_index
+            line_count = 0
+            byte_pos = 0
+            
+            # Skip to start_index
+            while line_count < start_index:
+                byte_pos = m.find(b'\n', byte_pos)
+                if byte_pos == -1:
+                    return graphs  # start_index beyond file
+                byte_pos += 1
+                line_count += 1
+            
+            # Read from start_index to end_index
+            while line_count < (end_index if end_index is not None else float('inf')):
+                line_end = m.find(b'\n', byte_pos)
+                if line_end == -1:
+                    line_end = len(m)
+                
+                if line_end == byte_pos:
+                    break
+                
+                line = m[byte_pos:line_end].strip()
+                if not line:
+                    raise ValueError(f"Graph at index {line_count} is empty")
+                
+                G = nx.from_graph6_bytes(line)
+                graphs.append(G)
+                
+                byte_pos = line_end + 1
+                line_count += 1
+    
     return graphs
 
 
