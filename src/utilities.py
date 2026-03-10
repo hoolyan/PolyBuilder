@@ -4,6 +4,7 @@ Utility functions for formatting and display.
 
 from collections import Counter
 from typing import List, Optional
+import sys
 import numpy as np
 
 
@@ -66,3 +67,30 @@ def format_dihedral_degrees(dihedral_set: List[Optional[float]], precision: int 
         List of dihedral angles in degrees, rounded to specified precision, or None for unassigned.
     """
     return [round(d * 180.0 / np.pi, precision) if d is not None else None for d in dihedral_set]
+
+
+def get_total_size_bytes(obj, seen=None):
+    """Recursively get total size of object and all referenced objects."""
+    if seen is None:
+        seen = set()
+    
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    
+    seen.add(obj_id)
+    size = sys.getsizeof(obj)
+    
+    # Recursively size container contents
+    if isinstance(obj, dict):
+        for key, val in obj.items():
+            size += get_total_size_bytes(key, seen)
+            size += get_total_size_bytes(val, seen)
+    elif isinstance(obj, (list, tuple)):
+        for item in obj:
+            size += get_total_size_bytes(item, seen)
+    elif hasattr(obj, '__dict__'):
+        # For custom objects, recurse into their attributes
+        size += get_total_size_bytes(obj.__dict__, seen)
+    
+    return size

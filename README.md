@@ -27,6 +27,7 @@ python polybuilder.py --F <face_count> --g6_path <input_file> --export_objs --ou
 | `--g6_path` | Yes | Path to input graph file in .g6 format (graph6 format) |
 | `--output_path` | No | Directory where results and OBJ files will be saved |
 | `--graph_subset_range` | No | Restrict analysis to a subset of graphs by index range (e.g., `0 100` analyzes the first 100 graphs). |
+| `--graph_memory` | No | Maximum memory to use for loading graphs (e.g., 16GB, 1024MB). Graphs are loaded in chunks respecting this limit. Default is 4GB. |
 | `--combination_limit` | No | Maximum combinations to explore per graph (default: unlimited). Graphs exceeding this limit are rejected. |
 | `--allow_coplanar_dihedrals` | No | Allow dihedral angles of 180° (coplanar faces). By default these are rejected to avoid creating faces that are not regular polygons. |
 | `--disable_overlap_check` | No | Skip the overlap detection check during realization validation. |
@@ -65,9 +66,14 @@ python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --save_progr
 python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --resume_from checkpoint.json --graph_subset_range 1000000 2000000 --export_objs --output_path ../output/out_f13
 ```
 
+#### Change max memory usage for loaded graph chunks:
+```bash
+python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --graph_memory 4GB
+```
+
 #### Limit computational effort when solution space is too large:
 ```bash
-python polybuilder.py --F 18 --g6_path ../input/input_graphs_f18.g6 --allow_coplanar_dihedrals --combination_limit 16
+python polybuilder.py --F 18 --g6_path ../input/input_graphs_f18.g6 ---combination_limit 16
 ```
 
 **How it works:**
@@ -123,11 +129,11 @@ MODULE BREAKDOWN
    - **Data class**: `CheckpointData` - container for run state (settings, progress index, results)
    - **Serialization**: `save_checkpoint()` - writes checkpoint to JSON file
    - **Deserialization**: `load_checkpoint()` - loads checkpoint from JSON file
-   - **Special handling**: Manages float edge cases (infinity, NaN) for JSON compatibility
 
 ### 6. `utilities.py` (~60 lines)
    - **Formatting**: `format_face_types()` - converts face type lists to human-readable summaries (e.g., `[3 triangles, 2 squares, 1 pentagon]`)
    - **Display**: `format_dihedral_degrees()` - converts dihedral angles from radians to degrees with reduced precision (4 decimal places by default)
+   - **Object metadata**: `get_total_size_bytes()` - determines size of an object and its contents
 
 ## Import Structure
 
@@ -143,13 +149,13 @@ from utilities import *
 
 **Dependency graph**:
 ```
-polybuilder.py (orchestration) → All modules
-data_structures.py → networkx
-dihedral_solver.py → data_structures
-realization_constructor.py → data_structures
-symmetry_checker.py → data_structures + networkx
-checkpoint.py → json
-utilities.py → collections
+utilities.py ← none
+data_structures.py ← utilities
+checkpoint.py ← none
+dihedral_solver.py ← data_structures
+realization_constructor.py ← data_structures
+symmetry_checker.py ← data_structures
+polybuilder.py ← utilities, data_structures, checkpoint, dihedral_solver, realization_constructor, symmetry_checker
 ```
 
 ## Author
