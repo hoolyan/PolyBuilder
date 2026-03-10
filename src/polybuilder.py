@@ -15,6 +15,8 @@ This file sets up:
 
 from __future__ import annotations
 
+import gc
+
 import argparse
 import math
 from typing import List, Tuple
@@ -42,6 +44,7 @@ def main():
     parser.add_argument("--graph_subset_range", type=int, nargs=2, default=[None, None], help="Range of graph indices to process (0-based, inclusive start, exclusive end)")
     parser.add_argument("--graph_memory", type=str, default="4GB", help="Maximum memory to use for loading graphs (e.g., 16GB, 1024MB). Graphs are loaded in chunks respecting this limit.")
     parser.add_argument("--combination_limit", type=int, default=None, help="Specify a limit on the number of combinations that can be explored during dihedral solution. Graph is rejected if this is exceeded.")
+    parser.add_argument("--specify_face_set", type=str, default=None, help="Only process graphs with a specific set of face types. Format: 'sides:count,sides:count,...' (e.g., '3:8,4:3,5:2' for 8 triangles, 3 squares, 2 pentagons)")
     parser.add_argument("--allow_coplanar_dihedrals", action="store_true", help="Allow dihedrals of 180 degrees, which correspond to coplanar faces.")
     parser.add_argument("--disable_overlap_check", action="store_true", help="Disable the check for overlapping features during construction.")
     parser.add_argument("--perform_asymmetry_check", action="store_true", help="Perform the check for symmetries in the realized polyhedra.")
@@ -59,6 +62,7 @@ def main():
     graph_subset_start = args.graph_subset_range[0]
     graph_subset_end = args.graph_subset_range[1]
     max_memory_str = args.graph_memory
+    specified_face_set_str = args.specify_face_set
     show_progress_details = args.show_progress_details
     display_dihedral_solutions = args.display_dihedral_solutions
     export_objs = args.export_objs
@@ -90,7 +94,9 @@ def main():
         max_memory_bytes = int(max_memory_str[:-1])
     else:
         raise ValueError("Invalid graph_memory format. Use 'GB', 'MB', 'KB', or 'B', e.g., '16GB', '1024MB'.")
-
+    
+    target_face_set = parse_face_set(specified_face_set_str)
+    
     print()
     
     # Handle checkpoint resume
@@ -148,6 +154,7 @@ def main():
 
     # Load and process graphs in chunks
     current_index = graph_subset_start
+    filtered_graphs = 0
     chunk_index = 0
     pbar = None
     total_graph_count = None
@@ -172,7 +179,19 @@ def main():
                 )
                 save_checkpoint(checkpoint_data, save_progress_path)
         
+        if graphs:
+            del graphs
+            gc.collect()
+        
+        # Suspend progress bar during chunk loading to avoid conflicts with loading progress display
+        if pbar:
+            pbar.disable = True
+        
         graphs, next_index, hit_memory_limit = read_g6_graphs(g6_path, current_index, graph_subset_end, max_memory_bytes, chunk_index)
+        
+        # Resume progress bar after loading
+        if pbar:
+            pbar.disable = False
         
         if not graphs:
             if pbar:
@@ -201,6 +220,7 @@ def main():
             pbar.set_postfix(passing_graphs=0, total_realizations=0)
         else:
             tqdm.write(f"Loaded graph chunk {chunk_index + 1}: {len(graphs)} graphs")
+        
         for graph_array_index, G in enumerate(graphs):
             gi = graph_array_index + current_index
 
@@ -211,6 +231,12 @@ def main():
                 pbar.close()
                 print(f"Failed to process graph. Graph {gi} contains {V} nodes, expected {F}. Ensure input graphs have the correct number of nodes (must equal specified face count).")
                 exit(1)
+
+            if target_face_set is not None:
+                if target_face_set != scout_face_set(G):
+                    pbar.update(1)
+                    filtered_graphs += 1
+                    continue
 
             try:
                 poly = create_polyhedron_from_graph(G)
@@ -359,6 +385,8 @@ def main():
 
             graphs_with_dihedral_solutions.append(G)
             graphs_with_dihedral_solutions_indices_faces_and_solutions.append((gi, face_str_list, [[e.dihedral if e.has_assigned_dihedral else None for e in poly.edges] for poly in solution_list]))
+            
+            tqdm.write(f"Graph {gi} produced {len(solution_list)} dihedral solution" + ("s" if len(solution_list) != 1 else "") + ".")
                 
             # At this point, all realizations in the solution_list have solved dihedrals. This does not necessarily mean the polyhedron is constructible. Once folded, there may be edge misalignments or self-intersection.
 
@@ -393,7 +421,6 @@ def main():
                     graphs_with_asymmetric_realizations.append(G)
                     graphs_with_asymmetric_realizations_indices_faces_and_solutions.append((gi, face_str_list, [[e.dihedral if e.has_assigned_dihedral else None for e in poly.edges] for poly in asymmetric_realizations]))
                     
-            tqdm.write(f"Graph {gi} produced {len(solution_list)} realizable solution" + ("s" if len(solution_list) != 1 else "") + ".")
             pbar.set_postfix(passing_graphs=len(graphs_with_realizations_indices_faces_and_solutions), total_realizations=sum(len(r_list) for _, _, r_list in graphs_with_realizations_indices_faces_and_solutions))
             
             # Save progress after finding something interesting
@@ -445,6 +472,8 @@ def main():
         save_checkpoint(checkpoint_data, save_progress_path)
 
     print(f"\nResults:")
+    if target_face_set:
+        print(f"\nGraphs filtered due to face set mismatch: {filtered_graphs}")
     if (resume_from_path):
         print(f"\nNew unsolved graphs: {len(graphs_unsolved)}")
         print(f"Total unsolved graphs: {len(graphs_unsolved_indices_faces_and_solutions)}")

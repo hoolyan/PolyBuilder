@@ -277,7 +277,6 @@ def scout_g6_graph_count(path: str, start_index: int, end_index: int) -> int:
     Returns:
         The number of graphs read in the specified range.
     """
-    import mmap
     
     graph_count = 0
     terminal_width = shutil.get_terminal_size().columns
@@ -303,8 +302,8 @@ def scout_g6_graph_count(path: str, start_index: int, end_index: int) -> int:
             sys.stdout.write("\r" + " " * terminal_width + "\r")
             sys.stdout.flush()
             
-            # Count from start_index to end_index with 60 Hz progress updates
-            last_update_time = time.time()
+            # Count from start_index to end_index
+            next_update_time = time.time()
             while line_count < (end_index if end_index is not None else float('inf')):
                 line_end = m.find(b'\n', byte_pos)
                 if line_end == -1:
@@ -317,10 +316,10 @@ def scout_g6_graph_count(path: str, start_index: int, end_index: int) -> int:
                 
                 # Update progress at 60 Hz (every 1/60th of a second)
                 current_time = time.time()
-                if current_time >= last_update_time:
+                if current_time >= next_update_time:
                     sys.stdout.write(f"\rScouted {graph_count} graphs...")
                     sys.stdout.flush()
-                    last_update_time = last_update_time + 1.0 / 60.0
+                    next_update_time = next_update_time + (int((current_time - next_update_time) * 60.0) + 1.0) / 60.0
                 
                 byte_pos = line_end + 1
                 line_count += 1
@@ -357,7 +356,6 @@ def read_g6_graphs(path: str, start_index: int, end_index: int, max_memory_bytes
     cumulative_memory = 0
     terminal_width = shutil.get_terminal_size().columns
     
-    
     sys.stdout.write("\r" + " " * terminal_width + "\r")
     sys.stdout.flush()
     if chunk_index == 0:
@@ -366,6 +364,7 @@ def read_g6_graphs(path: str, start_index: int, end_index: int, max_memory_bytes
     else:
         sys.stdout.write(f"Loading graph chunk {chunk_index + 1}...")
         sys.stdout.flush()
+    
     with open(path, "rb") as f:
         with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as m:
             # Count lines until we reach start_index
@@ -383,8 +382,8 @@ def read_g6_graphs(path: str, start_index: int, end_index: int, max_memory_bytes
             sys.stdout.write("\r" + " " * terminal_width + "\r")
             sys.stdout.flush()
             
-            # Read from start_index to end_index with 60 Hz progress updates
-            last_update_time = time.time()
+            # Read from start_index to end_index
+            next_update_time = time.time()
             while line_count < (end_index if end_index is not None else float('inf')):
                 line_end = m.find(b'\n', byte_pos)
                 if line_end == -1:
@@ -413,10 +412,11 @@ def read_g6_graphs(path: str, start_index: int, end_index: int, max_memory_bytes
                 
                 # Update progress at 60 Hz (every 1/60th of a second)
                 current_time = time.time()
-                if current_time >= last_update_time:
-                    sys.stdout.write(f"\rLoaded {len(graphs)} graphs...")
+                if current_time >= next_update_time:
+                    sys.stdout.write(f"\rLoading {len(graphs)} graphs...")
                     sys.stdout.flush()
-                    last_update_time = last_update_time + 1.0 / 60.0
+                    
+                    next_update_time = next_update_time + (int((current_time - next_update_time) * 60.0) + 1.0) / 60.0
                 
                 byte_pos = line_end + 1
                 line_count += 1
@@ -428,6 +428,20 @@ def read_g6_graphs(path: str, start_index: int, end_index: int, max_memory_bytes
     
     return graphs, final_index, False
 
+def scout_face_set(G: nx.Graph) -> Dict[int, int]:
+    """
+    Given a dict mapping face types (e.g., "triangle", "square", "pentagon") to counts,
+    return a concise string representation like "[8 triangles, 3 squares, 2 pentagons]".
+    
+    The face types are sorted by vertex count (e.g., triangle before square).
+    """
+    face_type_counts: Dict[int, int] = {}
+    for node in G.nodes():
+        degree = G.degree[node]
+        if degree < 3:
+            raise ValueError(f"Invalid face with degree {degree} at node {node}")
+        face_type_counts[degree] = face_type_counts.get(degree, 0) + 1
+    return face_type_counts
 
 def create_polyhedron_from_graph(G: nx.Graph) -> RegularFacedPolyhedron:
     """

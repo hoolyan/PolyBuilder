@@ -94,3 +94,30 @@ def get_total_size_bytes(obj, seen=None):
         size += get_total_size_bytes(obj.__dict__, seen)
     
     return size
+
+
+def parse_face_set(face_set_str):
+    """Parse face set string like '3:8,4:3,5:2' into {3: 8, 4: 3, 5: 2}
+    
+    Args:
+        face_set_str: String with format "sides:count,sides:count,..."
+        
+    Returns:
+        Dictionary mapping face side count to required count, or None if not specified
+    """
+    if not face_set_str:
+        return None
+    
+    result = {}
+    for pair in face_set_str.split(','):
+        parts = pair.strip().split(':')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid face set format: '{face_set_str}'. Expected format like '3:8,4:3,5:2'")
+        try:
+            face_sides = int(parts[0].strip())
+            face_count = int(parts[1].strip())
+        except ValueError:
+            raise ValueError(f"Invalid face set format: '{face_set_str}'. Sides and counts must be integers")
+        result[face_sides] = face_count
+    
+    return result

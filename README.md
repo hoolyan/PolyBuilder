@@ -29,6 +29,7 @@ python polybuilder.py --F <face_count> --g6_path <input_file> --export_objs --ou
 | `--graph_subset_range` | No | Restrict analysis to a subset of graphs by index range (e.g., `0 100` analyzes the first 100 graphs). |
 | `--graph_memory` | No | Maximum memory to use for loading graphs (e.g., 16GB, 1024MB). Graphs are loaded in chunks respecting this limit. Default is 4GB. |
 | `--combination_limit` | No | Maximum combinations to explore per graph (default: unlimited). Graphs exceeding this limit are rejected. |
+| `--specify_face_set` | No | Only process graphs with a specific set of face types. Format: `sides:count,sides:count,...` (e.g., `3:8,4:3,5:2` for 8 triangles, 3 squares, 2 pentagons) |
 | `--allow_coplanar_dihedrals` | No | Allow dihedral angles of 180° (coplanar faces). By default these are rejected to avoid creating faces that are not regular polygons. |
 | `--disable_overlap_check` | No | Skip the overlap detection check during realization validation. |
 | `--perform_asymmetry_check` | No | Perform a check for non-trivial graph and dihedral symmetries, and display realizations where none were found. |
@@ -64,6 +65,11 @@ python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --save_progr
 #### Resume from checkpoint after interruption or to continue with a different subset:
 ```bash
 python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --resume_from checkpoint.json --graph_subset_range 1000000 2000000 --export_objs --output_path ../output/out_f13
+```
+
+#### Specify a specific face set to search for:
+```bash
+python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --specify_face_set 3:8,4:3,5:2
 ```
 
 #### Change max memory usage for loaded graph chunks:
@@ -106,7 +112,7 @@ MODULE BREAKDOWN
 ### 1. `data_structures.py` (~550 lines)
    - **Geometry helpers**: `v_add()`, `v_sub()`, `v_scale()`, `v_norm()`, `v_normalize()`, `v_dot()`, `v_cross()`
    - **Core classes**: `Vertex`, `Edge`, `Face`, `RegularFacedPolyhedron`
-   - **Graph utilities**: `enumerate_embedding_faces()`, `read_g6_graphs()`, `create_polyhedron_from_graph()`
+   - **Graph utilities**: `enumerate_embedding_faces()`, `scout_g6_graph_count()`, `read_g6_graphs()`, `scout_face_set()`, `create_polyhedron_from_graph()`
 
 ### 2. `dihedral_solver.py` (~1125 lines)
    - **Spherical triangle solving**: `SphericalTriangle` class with `compute_SSS()` and `compute_SAS()`
@@ -134,6 +140,7 @@ MODULE BREAKDOWN
    - **Formatting**: `format_face_types()` - converts face type lists to human-readable summaries (e.g., `[3 triangles, 2 squares, 1 pentagon]`)
    - **Display**: `format_dihedral_degrees()` - converts dihedral angles from radians to degrees with reduced precision (4 decimal places by default)
    - **Object metadata**: `get_total_size_bytes()` - determines size of an object and its contents
+   - **Parsing utilities**: `parse_face_set()` - creates a dict of face types and counts based on an input string
 
 ## Import Structure
 
