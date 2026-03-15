@@ -27,7 +27,6 @@ python polybuilder.py --F <face_count> --g6_path <input_file> --export_objs --ou
 | `--g6_path` | Yes | Path to input graph file in .g6 format (graph6 format) |
 | `--output_path` | No | Directory where results and OBJ files will be saved |
 | `--graph_subset_range` | No | Restrict analysis to a subset of graphs by index range (e.g., `0 100` analyzes the first 100 graphs). |
-| `--graph_memory` | No | Maximum memory to use for loading graphs (e.g., 16GB, 1024MB). Graphs are loaded in chunks respecting this limit. Default is 4GB. |
 | `--combination_limit` | No | Maximum combinations to explore per graph (default: unlimited). Graphs exceeding this limit are rejected. |
 | `--specify_face_set` | No | Only process graphs with a specific set of face types. Format: `sides:count,sides:count,...` (e.g., `3:8,4:3,5:2` for 8 triangles, 3 squares, 2 pentagons) |
 | `--allow_coplanar_dihedrals` | No | Allow dihedral angles of 180° (coplanar faces). By default these are rejected to avoid creating faces that are not regular polygons. |
@@ -70,11 +69,6 @@ python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --resume_fro
 #### Specify a specific face set to search for:
 ```bash
 python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --specify_face_set 3:8,4:3,5:2
-```
-
-#### Change max memory usage for loaded graph chunks:
-```bash
-python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --graph_memory 4GB
 ```
 
 #### Limit computational effort when solution space is too large:

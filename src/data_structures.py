@@ -10,7 +10,7 @@ Defines:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Hashable
+from typing import List, Iterator, Tuple, Dict, Hashable
 import sys
 import time
 import mmap
@@ -18,8 +18,6 @@ import shutil
 
 import networkx as nx
 import numpy as np
-
-from utilities import get_total_size_bytes
 
 # ============================================================
 # Basic geometry helpers
@@ -283,7 +281,7 @@ def scout_g6_graph_count(path: str, start_index: int, end_index: int) -> int:
     
     sys.stdout.write("\r" + " " * terminal_width + "\r")
     sys.stdout.flush()
-    sys.stdout.write(f"Scouting remaining graphs...")
+    sys.stdout.write(f"Scouting graphs...")
     sys.stdout.flush()
     with open(path, "rb") as f:
         with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as m:
@@ -331,102 +329,67 @@ def scout_g6_graph_count(path: str, start_index: int, end_index: int) -> int:
     
     return graph_count
 
-def read_g6_graphs(path: str, start_index: int, end_index: int, max_memory_bytes: int = None, chunk_index: int = 0) -> Tuple[List[nx.Graph], int, bool]:
+def stream_g6_graphs(path: str, start_index: int = 0, end_index: int = None) -> Iterator[Tuple[nx.Graph, int]]:
     """
-    Read a specific subset of graphs from a .g6 file by index range.
+    Generator that streams graphs from a .g6 file one at a time.
     
-    Uses mmap to handle large files safely—Windows pages on demand
-    instead of thrashing when skipping to high indices.
+    Yields (graph, index) tuples. Memory usage stays constant (only 1 graph at a time).
+    Uses mmap for efficient seeking to start_index.
     
     Args:
         path: Path to .g6 file
         start_index: Starting graph index (0-based)
         end_index: Ending graph index (exclusive); None for end of file
-        max_memory_bytes: If specified, stop reading when cumulative memory would exceed this.
-        chunk_index: The index of the current chunk being read (for progress display)
     
-    Returns:
-        Tuple of (graphs_list, final_index_read_up_to, hit_memory_limit)
-        - final_index_read_up_to is the index after the last graph read (use as start_index for next call)
-        - hit_memory_limit is a boolean indicating if the memory limit was reached
+    Yields:
+        Tuple of (nx.Graph, current_index)
     """
-    
-    graphs = []
-    final_index = start_index
-    cumulative_memory = 0
-    terminal_width = shutil.get_terminal_size().columns
-    
-    sys.stdout.write("\r" + " " * terminal_width + "\r")
-    sys.stdout.flush()
-    if chunk_index == 0:
-        sys.stdout.write(f"Loading graphs...")
-        sys.stdout.flush()
-    else:
-        sys.stdout.write(f"Loading graph chunk {chunk_index + 1}...")
-        sys.stdout.flush()
-    
+
+    if start_index < 0:
+        raise ValueError("start_index must be >= 0")
+    if end_index is not None and end_index < start_index:
+        raise ValueError("end_index must be >= start_index")
+
     with open(path, "rb") as f:
         with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as m:
-            # Count lines until we reach start_index
+            n = len(m)
             line_count = 0
             byte_pos = 0
-            
+
             # Skip to start_index
             while line_count < start_index:
-                byte_pos = m.find(b'\n', byte_pos)
-                if byte_pos == -1:
-                    return graphs, final_index, False  # start_index beyond file
-                byte_pos += 1
+                if byte_pos >= n:
+                    return  # start_index beyond file
+                nxt = m.find(b"\n", byte_pos)
+                if nxt == -1:
+                    return  # no more newlines => EOF before start_index
+                byte_pos = nxt + 1
                 line_count += 1
-            
-            sys.stdout.write("\r" + " " * terminal_width + "\r")
-            sys.stdout.flush()
-            
-            # Read from start_index to end_index
-            next_update_time = time.time()
-            while line_count < (end_index if end_index is not None else float('inf')):
-                line_end = m.find(b'\n', byte_pos)
+
+            # Stream until end_index or EOF
+            while True:
+                if end_index is not None and line_count >= end_index:
+                    return
+                if byte_pos >= n:
+                    return  # EOF
+
+                line_end = m.find(b"\n", byte_pos)
+                eof = False
                 if line_end == -1:
-                    line_end = len(m)
-                
-                if line_end == byte_pos:
-                    break
-                
-                line = m[byte_pos:line_end].strip()
+                    line_end = n
+                    eof = True
+
+                # Extract line bytes (graph6 is ASCII-ish)
+                line = m[byte_pos:line_end].rstrip(b"\r\n")
                 if not line:
                     raise ValueError(f"Graph at index {line_count} is empty")
-                
-                G = nx.from_graph6_bytes(line)
-                # Check memory limit before adding this graph
-                if max_memory_bytes is not None:
-                    graph_memory = get_total_size_bytes(G)
-                    if cumulative_memory + graph_memory > max_memory_bytes and graphs:
-                        # Clear the progress line using terminal width to avoid wrapping
-                        sys.stdout.write("\r" + " " * terminal_width + "\r")
-                        sys.stdout.flush()
-                        return graphs, final_index, True
-                    cumulative_memory += graph_memory
-                
-                graphs.append(G)
-                final_index = line_count + 1  # Next call should start from line_count + 1
-                
-                # Update progress at 60 Hz (every 1/60th of a second)
-                current_time = time.time()
-                if current_time >= next_update_time:
-                    sys.stdout.write(f"\rLoading {len(graphs)} graphs...")
-                    sys.stdout.flush()
-                    
-                    next_update_time = next_update_time + (int((current_time - next_update_time) * 60.0) + 1.0) / 60.0
-                
-                byte_pos = line_end + 1
+
+                yield nx.from_graph6_bytes(line), line_count
+
                 line_count += 1
-    
-    # Clear the progress line using terminal width to avoid wrapping
-    if len(graphs) > 0:
-        sys.stdout.write("\r" + " " * terminal_width + "\r")
-        sys.stdout.flush()
-    
-    return graphs, final_index, False
+                byte_pos = line_end + 1
+                if eof:
+                    return
 
 def scout_face_set(G: nx.Graph) -> Dict[int, int]:
     """
