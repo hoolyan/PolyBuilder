@@ -1,164 +1,205 @@
 # PolyBuilder
 
-A tool for constructing and analyzing asymmetric regular-faced polyhedra. This program takes planar graphs as input and computes valid 3D realizations where all faces are regular polygons.
+PolyBuilder is a computational search tool for constructing and analyzing polyhedra whose faces are regular polygons with a common edge length. It takes the dual graph of a candidate polyhedron, solves for compatible dihedral angles using spherical geometry, folds the faces into 3D, and checks the resulting realization for symmetry.
 
-## Overview
+The program was developed as part of a search for the regular-faced polyhedron with the fewest faces and no nontrivial symmetry.
 
-PolyBuilder uses spherical geometry and dihedral angle constraints to find all possible realizations of polyhedra with regular faces from a given 3-connected planar graph.
+## What PolyBuilder Does
+
+For each 3-connected simple planar input graph, PolyBuilder:
+
+1. Interprets each graph node as a polyhedron face.
+2. Uses the degree of each node to determine the number of sides of that face.
+3. Applies spherical-triangle constraints at the polyhedron's vertices.
+4. Propagates known dihedral angles and branches when two discrete local solutions are possible.
+5. Constructs 3D coordinates for each complete dihedral assignment.
+6. Rejects assignments that do not close with unit-length edges and regular face geometry.
+7. Searches for nontrivial graph automorphisms that preserve face data and dihedral angles.
+8. Optionally exports constructed realizations as OBJ files.
+
+The method supports convex and nonconvex dihedral configurations. It is intended for exhaustive computational searches over graphs that become discretely solvable through the vertex-dihedral propagation process.
+
+## Scope and Limitations
+
+PolyBuilder is a numerical research program, not a formal proof assistant. Its results should be interpreted with the following limitations in mind:
+
+- **Propagation must become discrete.** Some graphs may remain locally flexible because no vertex initially has a finite set of dihedral completions. PolyBuilder reports these graphs as unsolved rather than declaring them impossible. Among the supplied graph sets with at most nine faces, the octahedral graph is the only graph with this behavior.
+- **Self-intersection is not checked exhaustively.** The current strict validation detects coincident vertices, edge midpoints, and face centers, but it does not perform a complete polygon-polygon intersection test. A geometrically closed output may therefore still represent a self-intersecting surface and should be checked separately when simplicity matters.
+- **Calculations use floating-point tolerances.** Closure, regularity, equality of dihedral angles, and symmetry preservation are tested numerically.
+- **Optional limits can make a run incomplete.** Using `--combination_limit`, a graph subset, or a face-set filter intentionally restricts the search.
+- **Checkpoint compatibility is only partially enforced.** The program currently verifies `F` and `g6_path` when resuming. Use the same remaining search settings unless you deliberately intend to combine different runs.
+
+For the supplied `F = 4` through `F = 9` graph sets, the propagation method solves every graph except the octahedral graph. After separately excluding self-intersecting outputs, the search produces two distinct simple asymmetric realizations with nine faces and none with fewer than nine among the graphs solved by the method.
 
 ## Requirements
 
-- Python 3.6+
-- networkx (for graph operations)
+- Python 3.10+
+- [NetworkX](https://networkx.org/)
+- [NumPy](https://numpy.org/)
+- [tqdm](https://tqdm.github.io/)
+- [Matplotlib](https://matplotlib.org/)
 
-## Usage
-
-### Basic Command
+Install the Python dependencies with:
 
 ```bash
-python polybuilder.py --F <face_count> --g6_path <input_file> --export_objs --output_path <output_dir>
+python -m pip install networkx numpy tqdm matplotlib
 ```
 
-### Arguments
+## Input Graphs
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `--F` | Yes | Number of faces in the polyhedron |
-| `--g6_path` | Yes | Path to input graph file in .g6 format (graph6 format) |
-| `--output_path` | No | Directory where results and OBJ files will be saved |
-| `--graph_subset_range` | No | Restrict analysis to a subset of graphs by index range (e.g., `0 100` analyzes the first 100 graphs). |
-| `--combination_limit` | No | Maximum combinations to explore per graph (default: unlimited). Graphs exceeding this limit are rejected. |
-| `--specify_face_set` | No | Only process graphs with a specific set of face types. Format: `sides:count,sides:count,...` (e.g., `3:8,4:3,5:2` for 8 triangles, 3 squares, 2 pentagons) |
-| `--allow_coplanar_dihedrals` | No | Allow dihedral angles of 180° (coplanar faces). By default these are rejected to avoid creating faces that are not regular polygons. |
-| `--disable_overlap_check` | No | Skip the overlap detection check during realization validation. |
-| `--perform_asymmetry_check` | No | Perform a check for non-trivial graph and dihedral symmetries, and display realizations where none were found. |
-| `--export_objs` | No | Export valid realizations as OBJ files for 3D visualization |
-| `--export_invalid_objs` | No | Export invalid realizations as OBJ files for 3D visualization |
-| `--display_dihedral_solutions` | No | Print detailed dihedral angle solutions found during solving |
-| `--show_progress_details` | No | Display verbose progress information during computation |
-| `--save_progress` | No | Path to save progress file after every graph (e.g., `checkpoint.json`). Automatically saves progress to the same file every time a graph is processed. If `--resume_from` is specified without `--save_progress`, new progress will be saved back to the resume path by default. |
-| `--resume_from` | No | Resume from a previous progress file. Restores all progress and results from the last saved state. If `--save_progress` is not specified, progress updates will be saved to this path. |
+Input files use the [graph6](https://users.cecs.anu.edu.au/~bdm/data/formats.html) format, with one graph per line.
 
-### Examples
+PolyBuilder treats the input as the **dual graph** of the polyhedron:
 
-#### Export polyhedra with 9 faces:
-```bash
-python polybuilder.py --F 9 --g6_path ../input/input_graphs_f9.g6 --export_objs --output_path ../output/out_f9
-```
+- graph nodes correspond to polyhedron faces;
+- graph edges correspond to shared polyhedron edges;
+- planar faces of the embedded graph correspond to polyhedron vertices;
+- the degree of a graph node is the number of sides of the corresponding regular face.
 
-#### Check for asymmetry in realizations:
-```bash
-python polybuilder.py --F 9 --g6_path ../input/input_graphs_f9.g6 --export_objs --output_path ../output/out_f9
-```
-
-#### Explore graphs while viewing solution details:
-```bash
-python polybuilder.py --F 10 --g6_path ../input/input_graphs_f10.g6 --display_dihedral_solutions --show_progress_details
-```
-
-#### Long-running analysis with checkpointing:
-```bash
-python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --save_progress checkpoint.json --graph_subset_range 0 1000000 --export_objs --output_path ../output/out_f13
-```
-
-#### Resume from checkpoint after interruption or to continue with a different subset:
-```bash
-python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --resume_from checkpoint.json --graph_subset_range 1000000 2000000 --export_objs --output_path ../output/out_f13
-```
-
-#### Specify a specific face set to search for:
-```bash
-python polybuilder.py --F 13 --g6_path ../input/input_graphs_f13.g6 --specify_face_set 3:8,4:3,5:2
-```
-
-#### Limit computational effort when solution space is too large:
-```bash
-python polybuilder.py --F 18 --g6_path ../input/input_graphs_f18.g6 ---combination_limit 16
-```
-
-**How it works:**
-- Progress saves: run settings, current progress index, and all accumulated results (unsolved graphs, dihedral solutions, realizations, asymmetric realizations)
-- On resume: validates that F and g6_path match the F and g6_path specified in a progress file, then continues from the saved index
-- `--graph_subset_range` start index is ignored when resuming from a progress file if the start index is earlier than the checkpoint index to prevent redundant data
-- Progress file is JSON format and human-readable
-
-### Input: Generating Graph Files
-
-Input graphs must be in **graph6 format** (.g6 files). Generate them using [plantri](http://users.cecs.anu.edu.au/~bdm/plantri/):
+Input graphs should be 3-connected, simple, and planar. They can be generated with [plantri](https://users.cecs.anu.edu.au/~bdm/plantri/):
 
 ```bash
 plantri -pg <face_count> <output_file>.g6
 ```
 
-For example, to generate all 3-connected planar graphs with 10 nodes:
+For example:
+
 ```bash
-plantri -pg 10 input_graphs_f10.g6
+plantri -pg 9 input_graphs_f9.g6
 ```
 
-### Output
+## Usage
 
-Results are saved to the specified output directory containing:
-- OBJ files (if `--export_objs` or `--export_invalid_objs` is specified) for 3D model visualization
+### Basic command
 
-MODULE BREAKDOWN
-================
-
-### 1. `data_structures.py` (~550 lines)
-   - **Geometry helpers**: `v_add()`, `v_sub()`, `v_scale()`, `v_norm()`, `v_normalize()`, `v_dot()`, `v_cross()`
-   - **Core classes**: `Vertex`, `Edge`, `Face`, `RegularFacedPolyhedron`
-   - **Graph utilities**: `enumerate_embedding_faces()`, `scout_g6_graph_count()`, `read_g6_graphs()`, `scout_face_set()`, `create_polyhedron_from_graph()`
-
-### 2. `dihedral_solver.py` (~1125 lines)
-   - **Spherical triangle solving**: `SphericalTriangle` class with `compute_SSS()` and `compute_SAS()`
-   - **Triangulation**: `SphericalTriangulation` class with `solve_triangulation()` and `get_dihedral()`
-   - **Main orchestrator**: `extend_solved_vertices()` - branches solutions based on vertex states
-   - **Helpers**: `num_solutions()`, `has_valid_dihedrals()`, `calculate_dihedral()`, `calculate_possible_dihedrals()`
-
-### 3. `realization_constructor.py` (~483 lines)
-   - **3D coordinate construction**: `construct_polyhedron_realization()` with 4 embedded transforms
-   - **Edge alignment**: `rotate_face_about_normal_to_align_edge()` with precision fix (rtol=0)
-   - **Validation**: `is_valid_realization()` - checks unit edges and face regularity
-   - **Export**: `export_regular_faced_polyhedron_to_OBJ()` - writes OBJ format files
-
-### 4. `symmetry_checker.py` (~52 lines)
-   - **Graph construction**: `build_vertex_graph_with_dihedrals()` with dihedral attributes
-   - **Detection**: `has_nontrivial_automorphism_with_dihedrals()` - finds non-identity isomorphisms
-   - **Helpers**: `TAU`, `_wrap_0_tau()`, `_ang_dist()` - angle normalization and circular distance
-
-### 5. `checkpoint.py` (~80 lines)
-   - **Data class**: `CheckpointData` - container for run state (settings, progress index, results)
-   - **Serialization**: `save_checkpoint()` - writes checkpoint to JSON file
-   - **Deserialization**: `load_checkpoint()` - loads checkpoint from JSON file
-
-### 6. `utilities.py` (~60 lines)
-   - **Formatting**: `format_face_types()` - converts face type lists to human-readable summaries (e.g., `[3 triangles, 2 squares, 1 pentagon]`)
-   - **Display**: `format_dihedral_degrees()` - converts dihedral angles from radians to degrees with reduced precision (4 decimal places by default)
-   - **Object metadata**: `get_total_size_bytes()` - determines size of an object and its contents
-   - **Parsing utilities**: `parse_face_set()` - creates a dict of face types and counts based on an input string
-
-## Import Structure
-
-`polybuilder.py` imports all modules:
-```python
-from data_structures import *
-from dihedral_solver import *
-from realization_constructor import *
-from symmetry_checker import *
-from checkpoint import *
-from utilities import *
+```bash
+python polybuilder.py --F <face_count> --g6_path <input_file>
 ```
 
-**Dependency graph**:
+To export constructed realizations:
+
+```bash
+python polybuilder.py \
+  --F 9 \
+  --g6_path input_graphs_f9.g6 \
+  --export_objs \
+  --output_path output_f9
 ```
-utilities.py ← none
-data_structures.py ← utilities
-checkpoint.py ← none
-dihedral_solver.py ← data_structures
-realization_constructor.py ← data_structures
-symmetry_checker.py ← data_structures
-polybuilder.py ← utilities, data_structures, checkpoint, dihedral_solver, realization_constructor, symmetry_checker
+
+### Arguments
+
+| Argument | Description |
+|---|---|
+| `--F` | Number of polyhedron faces. This must equal the number of nodes in each input graph. |
+| `--g6_path` | Path to a graph6 input file. |
+| `--output_path` | Directory for OBJ exports. Required with `--export_objs` or `--export_invalid_objs`. |
+| `--graph_subset_range START END` | Process graph indices in the half-open interval `[START, END)`. |
+| `--combination_limit N` | Stop further branching for a graph when the number of partial solutions exceeds `N`. This may leave that graph incompletely searched. |
+| `--specify_face_set SPEC` | Process only graphs with a specified multiset of face types, such as `3:8,4:3,5:2`. |
+| `--allow_coplanar_dihedrals` | Permit dihedral angles of 180 degrees. These degenerate coplanar configurations are rejected by default. |
+| `--disable_overlap_check` | Disable the limited coincidence check used during realization validation. This flag does not refer to a complete self-intersection test. |
+| `--perform_asymmetry_check` | Display the final summary of asymmetric realizations. Symmetry classification is currently performed internally for all constructed realizations regardless of this flag. |
+| `--export_objs` | Export accepted realizations as OBJ files. |
+| `--export_invalid_objs` | Export rejected constructed realizations for debugging. |
+| `--display_dihedral_solutions` | Print the dihedral angles associated with reported solutions. |
+| `--show_progress_details` | Print detailed propagation and validation information. |
+| `--save_progress PATH` | Save a JSON checkpoint after each processed graph and at the end of the run. |
+| `--resume_from PATH` | Resume from a checkpoint. If `--save_progress` is omitted, updates are written back to the same file. |
+
+## Examples
+
+### Search all supplied nine-face graphs
+
+```bash
+python polybuilder.py \
+  --F 9 \
+  --g6_path input_graphs_f9.g6 \
+  --perform_asymmetry_check \
+  --display_dihedral_solutions
 ```
+
+### Export accepted and rejected constructions
+
+```bash
+python polybuilder.py \
+  --F 9 \
+  --g6_path input_graphs_f9.g6 \
+  --export_objs \
+  --export_invalid_objs \
+  --output_path output_f9
+```
+
+### Search only a particular face multiset
+
+```bash
+python polybuilder.py \
+  --F 13 \
+  --g6_path input_graphs_f13.g6 \
+  --specify_face_set 3:8,4:3,5:2
+```
+
+### Run a subset with checkpointing
+
+```bash
+python polybuilder.py \
+  --F 13 \
+  --g6_path input_graphs_f13.g6 \
+  --graph_subset_range 0 1000000 \
+  --save_progress checkpoint_f13.json
+```
+
+### Resume a checkpoint
+
+```bash
+python polybuilder.py \
+  --F 13 \
+  --g6_path input_graphs_f13.g6 \
+  --resume_from checkpoint_f13.json
+```
+
+### Limit branching on large searches
+
+```bash
+python polybuilder.py \
+  --F 18 \
+  --g6_path input_graphs_f18.g6 \
+  --combination_limit 16
+```
+
+## Results and Output
+
+During a run, PolyBuilder reports graphs in four categories:
+
+- **Unsolved graphs:** the propagation method could not fully determine the dihedrals.
+- **Graphs with dihedral solutions:** complete locally compatible dihedral assignments were found.
+- **Graphs with realizations:** at least one dihedral assignment produced a closed 3D construction that passed the current numerical validation.
+- **Graphs with asymmetric realizations:** at least one constructed realization had no nontrivial automorphism preserving the tested face and dihedral data.
+
+OBJ files are written only when an export flag is supplied. Checkpoint files contain run settings, the next graph index, and the accumulated result categories in human-readable JSON.
+
+## Project Structure
+
+### `polybuilder.py`
+Main command-line entry point. Streams input graphs, coordinates the dihedral search, constructs realizations, classifies symmetry, exports OBJ files, and reports results.
+
+### `data_structures.py`
+Defines the `Vertex`, `Edge`, `Face`, and `RegularFacedPolyhedron` classes, vector helpers, graph6 streaming, planar embedding utilities, and conversion from a dual graph to the internal polyhedron representation.
+
+### `dihedral_solver.py`
+Implements spherical triangles, spherical triangulations, local solvability tests, dihedral calculation, propagation, and branching.
+
+### `realization_constructor.py`
+Builds regular polygon faces in 3D, folds them according to assigned dihedrals, validates closure and regular face geometry, and exports OBJ files.
+
+### `symmetry_checker.py`
+Uses NetworkX graph isomorphism to search for nonidentity automorphisms that preserve vertex data and edge dihedral angles.
+
+### `checkpoint.py`
+Saves and loads resumable JSON checkpoints.
+
+### `utilities.py`
+Contains formatting, face-set parsing, and object-size helpers.
 
 ## Author
 
-Created by Julian Spencer ([@hoolyan](https://github.com/hoolyan))
+Created by Julian Spencer ([@hoolyan](https://github.com/hoolyan)).

@@ -1024,12 +1024,12 @@ def calculate_dihedral(vertex: Vertex, missing_edge: Edge) -> Tuple[bool, bool, 
     if not convex_solvable and not concave_solvable:
         return False, False, None
     if convex_solvable and not concave_solvable:
-        return convex_valid, True, convex_solution
+        return True, convex_valid, convex_solution
     if not convex_solvable and concave_solvable:
-        return concave_valid, True, concave_solution
+        return True, concave_valid, concave_solution
     if abs(convex_solution - concave_solution) < 1e-12:
         # In the '1 solution' state, SAS propagation should yield a unique value, if it doesn't, that's a problem.
-        return convex_valid and concave_valid, True, convex_solution
+        return True, convex_valid and concave_valid, convex_solution
     else:
         raise ValueError(f"Vertex {vertex.index} is not in '1 solution' state; dihedral is ambiguous")
 

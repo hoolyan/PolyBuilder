@@ -289,13 +289,19 @@ def main():
                     break
             r_avg_dihedral = sum(e.dihedral for e in r.edges) / len(r.edges)
             if abs(r_avg_dihedral - math.pi) < 1e-12:
-                for r_check_index in range(len(solution_list)):
-                    if r_check_index >= r_index:
-                        continue
+                # At exactly pi, average cannot choose between an inside-out pair.
+                # Keep the earlier member, but only after confirming the pair.
+                for r_check_index in range(r_index):
                     r_check = solution_list[r_check_index]
-                    if abs(r_avg_dihedral - sum(e.dihedral for e in r_check.edges) / len(r_check.edges)) < 1e-12:
+
+                    check_is_inside_out_copy = True
+                    for d_index in range(len(r.edges)):
+                        if not abs(2.0 * math.pi - r.edges[d_index].dihedral - r_check.edges[d_index].dihedral) < 1e-12:
+                            check_is_inside_out_copy = False
+                            break
+
+                    if check_is_inside_out_copy:
                         duplicate_indices.append(r_index)
-                        if show_progress_details: print(f"Removing duplicate solution {r_index} with average dihedral {r_avg_dihedral}")
                         break
             elif check_is_inside_out_copy and r_avg_dihedral > math.pi:
                 if show_progress_details: print(f"Removing duplicate solution with average dihedral > pi: {r_avg_dihedral}")
