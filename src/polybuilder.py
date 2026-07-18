@@ -2,7 +2,7 @@
 Search over realizations of regular-faced polyhedra for a given set of planar graphs.
 
 - Input: .g6 file from plantri (3-connected planar graphs)
-- Args:  F (face count), g6_path, output_path (for logging / OBJ dumps later)
+- Args:  face_count, g6_path, output_path (for logging / OBJ dumps later)
 
 This file sets up:
 - Polyhedron / Face / Edge / Vertex data structures
@@ -37,24 +37,24 @@ from symmetry_checker import *
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--F", type=int, help="Face count")
-    parser.add_argument("--g6_path", type=str, help="Input .g6 file from plantri")
-    parser.add_argument("--graph_subset_range", type=int, nargs=2, default=[None, None], help="Range of graph indices to process (0-based, inclusive start, exclusive end)")
-    parser.add_argument("--combination_limit", type=int, default=None, help="Specify a limit on the number of combinations that can be explored during dihedral solution. Graph is rejected if this is exceeded.")
-    parser.add_argument("--specify_face_set", type=str, default=None, help="Only process graphs with a specific set of face types. Format: 'sides:count,sides:count,...' (e.g., '3:8,4:3,5:2' for 8 triangles, 3 squares, 2 pentagons)")
-    parser.add_argument("--allow_coplanar_dihedrals", action="store_true", help="Allow dihedrals of 180 degrees, which correspond to coplanar faces.")
-    parser.add_argument("--disable_overlap_check", action="store_true", help="Disable the check for overlapping features during construction.")
-    parser.add_argument("--perform_asymmetry_check", action="store_true", help="Perform the check for symmetries in the realized polyhedra.")
-    parser.add_argument("--show_progress_details", action="store_true", help="Print progress info")
-    parser.add_argument("--display_dihedral_solutions", action="store_true", help="Display dihedral solutions for each graph in each category after processing is complete.")
-    parser.add_argument("--export_objs", action="store_true", help="Export OBJs of valid realizations")
-    parser.add_argument("--export_invalid_objs", action="store_true", help="Export OBJs of invalid realizations")
-    parser.add_argument("--output_path", type=str, help="Output path (currently just used for OBJ exports)")
-    parser.add_argument("--save_progress", type=str, default=None, help="Path to save progress after every batch (e.g., checkpoint.json)")
-    parser.add_argument("--resume_from", type=str, default=None, help="Resume from a previously saved progress file (e.g., checkpoint.json)")
+    parser.add_argument("--face-count", type=int, help="Face count")
+    parser.add_argument("--g6-path", type=str, help="Input .g6 file from plantri")
+    parser.add_argument("--graph-subset-range", type=int, nargs=2, default=[None, None], help="Range of graph indices to process (0-based, inclusive start, exclusive end)")
+    parser.add_argument("--combination-limit", type=int, default=None, help="Specify a limit on the number of combinations that can be explored during dihedral solution. Graph is rejected if this is exceeded.")
+    parser.add_argument("--specify-face-set", type=str, default=None, help="Only process graphs with a specific set of face types. Format: 'sides:count,sides:count,...' (e.g., '3:8,4:3,5:2' for 8 triangles, 3 squares, 2 pentagons)")
+    parser.add_argument("--allow-coplanar-dihedrals", action="store_true", help="Allow dihedrals of 180 degrees, which correspond to coplanar faces.")
+    parser.add_argument("--disable-overlap-check", action="store_true", help="Disable the check for overlapping features during construction.")
+    parser.add_argument("--perform-asymmetry-check", action="store_true", help="Perform the check for symmetries in the realized polyhedra.")
+    parser.add_argument("--show-progress-details", action="store_true", help="Print progress info")
+    parser.add_argument("--display-dihedral-solutions", action="store_true", help="Display dihedral solutions for each graph in each category after processing is complete.")
+    parser.add_argument("--export-objs", action="store_true", help="Export OBJs of valid realizations")
+    parser.add_argument("--export-invalid-objs", action="store_true", help="Export OBJs of invalid realizations")
+    parser.add_argument("--output-path", type=str, help="Output path (currently just used for OBJ exports)")
+    parser.add_argument("--save-progress", type=str, default=None, help="Path to save progress after every batch (e.g., checkpoint.json)")
+    parser.add_argument("--resume-from", type=str, default=None, help="Resume from a previously saved progress file (e.g., checkpoint.json)")
     args = parser.parse_args()
 
-    F = args.F
+    face_count = args.face_count
     g6_path = args.g6_path
     graph_subset_start = args.graph_subset_range[0]
     graph_subset_end = args.graph_subset_range[1]
@@ -92,8 +92,8 @@ def main():
         checkpoint = load_checkpoint(resume_from_path)
         
         # Verify checkpoint settings match specified run settings
-        if checkpoint.run_settings.get("F") != F:
-            raise ValueError(f"Checkpoint F={checkpoint.run_settings.get('F')} does not match specified F={F}")
+        if checkpoint.run_settings.get("face_count") != face_count:
+            raise ValueError(f"Checkpoint face_count={checkpoint.run_settings.get('face_count')} does not match specified face_count={face_count}")
         if checkpoint.run_settings.get("g6_path") != g6_path:
             raise ValueError(f"Checkpoint g6_path \"{checkpoint.run_settings.get('g6_path')}\" does not match specified g6_path \"{g6_path}\"")
         
@@ -149,26 +149,26 @@ def main():
     next_gi = graph_subset_start
 
     # Stream graphs one at a time from file
-    for G, gi in stream_g6_graphs(g6_path, graph_subset_start, graph_subset_end):
+    for graph, gi in stream_g6_graphs(g6_path, graph_subset_start, graph_subset_end):
 
         next_gi = gi + 1
         
-        V = G.number_of_nodes()
+        vertex_count = graph.number_of_nodes()
 
-        if V != F:
+        if vertex_count != face_count:
             # This should never happen if g6 files are correctly generated.
             pbar.close()
-            print(f"Failed to process graph. Graph {gi} contains {V} nodes, expected {F}. Ensure input graphs have the correct number of nodes (must equal specified face count).")
+            print(f"Failed to process graph. Graph {gi} contains {vertex_count} nodes, expected {face_count}. Ensure input graphs have the correct number of nodes (must equal specified face count).")
             exit(1)
 
         if target_face_set is not None:
-            if target_face_set != scout_face_set(G):
+            if target_face_set != scout_face_set(graph):
                 pbar.update(1)
                 filtered_graphs += 1
                 continue
 
         try:
-            poly = create_polyhedron_from_graph(G)
+            poly = create_polyhedron_from_graph(graph)
         except Exception as e:
             pbar.close()
             print(f"Failed to process graph. Cannot embed graph {gi} as polyhedron: {e}. Ensure input graphs are 3-connected and planar.")
@@ -203,7 +203,7 @@ def main():
 
         if (all(num_solutions(v) == math.inf for v in solution_list[0].vertices)):
             if show_progress_details: print(f"Graph {gi}: unable to solve using vertex-dihedral rigidity propagation")
-            graphs_unsolved.append(G)
+            graphs_unsolved.append(graph)
             graphs_unsolved_indices_faces_and_solutions.append((gi, face_str_list, [[e.dihedral if e.has_assigned_dihedral else None for e in poly.edges] for poly in solution_list]))
             continue
 
@@ -311,14 +311,14 @@ def main():
 
         if (any(num_solutions(v) == math.inf for v in solution_list[0].vertices)):
             if show_progress_details: print(f"Graph {gi}: unable to solve using vertex-dihedral rigidity propagation")
-            graphs_unsolved.append(G)
+            graphs_unsolved.append(graph)
             graphs_unsolved_indices_faces_and_solutions.append((gi, face_str_list, [[e.dihedral for e in poly.edges] for poly in solution_list]))
             continue
 
         for r_index in reversed(duplicate_indices):
             solution_list.pop(r_index)
 
-        graphs_with_dihedral_solutions.append(G)
+        graphs_with_dihedral_solutions.append(graph)
         graphs_with_dihedral_solutions_indices_faces_and_solutions.append((gi, face_str_list, [[e.dihedral if e.has_assigned_dihedral else None for e in poly.edges] for poly in solution_list]))
         
         tqdm.write(f"Graph {gi} produced {len(solution_list)} dihedral solution" + ("s" if len(solution_list) != 1 else "") + ".")
@@ -337,7 +337,7 @@ def main():
             else:
                 if show_progress_details: print(f"Realization of graph {gi} solution {s_index} is invalid: {validation_message}")
                 if export_invalid_objs: # Just to see what's wrong with the invalid ones.
-                    export_regular_faced_polyhedron_to_OBJ(model, output_path, f"graph_{gi}_invalid_realization_{s_index - len(realized_solutions)}.obj")
+                    export_regular_faced_polyhedron_to_obj(model, output_path, f"graph_{gi}_invalid_realization_{s_index - len(realized_solutions)}.obj")
 
         # Part 3: Checking for symmetry and exporting results
 
@@ -349,11 +349,11 @@ def main():
                     if show_progress_details: print(f"Graph {gi} realization {i} has no non-trivial symmetries.")
                     asymmetric_realizations.append(m)
                 if export_objs:
-                    export_regular_faced_polyhedron_to_OBJ(m, output_path, f"graph_{gi}_realization_{i}.obj")
-            graphs_with_realizations.append(G)
+                    export_regular_faced_polyhedron_to_obj(m, output_path, f"graph_{gi}_realization_{i}.obj")
+            graphs_with_realizations.append(graph)
             graphs_with_realizations_indices_faces_and_solutions.append((gi, face_str_list, [[e.dihedral if e.has_assigned_dihedral else None for e in poly.edges] for poly in realized_solutions]))
             if len(asymmetric_realizations) > 0:
-                graphs_with_asymmetric_realizations.append(G)
+                graphs_with_asymmetric_realizations.append(graph)
                 graphs_with_asymmetric_realizations_indices_faces_and_solutions.append((gi, face_str_list, [[e.dihedral if e.has_assigned_dihedral else None for e in poly.edges] for poly in asymmetric_realizations]))
                 
         pbar.set_postfix(passing_graphs=len(graphs_with_realizations_indices_faces_and_solutions), valid_realizations=sum(len(r_list) for _, _, r_list in graphs_with_realizations_indices_faces_and_solutions))
@@ -362,7 +362,7 @@ def main():
         if save_progress_path:
             checkpoint_data = CheckpointData(
                 run_settings={
-                    "F": F,
+                    "face_count": face_count,
                     "g6_path": g6_path,
                     "combination_limit": combination_limit,
                     "export_objs": export_objs,
@@ -383,7 +383,7 @@ def main():
     if save_progress_path:
         checkpoint_data = CheckpointData(
             run_settings={
-                "F": F,
+                "face_count": face_count,
                 "g6_path": g6_path,
                 "combination_limit": combination_limit,
                 "export_objs": export_objs,

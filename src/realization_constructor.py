@@ -239,7 +239,7 @@ def construct_polyhedron_realization(solution: RegularFacedPolyhedron) -> Regula
     for face in solution.faces:
         # Create a face with vertices placed as a regular polygon in local xy-plane
         n = len(face.vertices)
-        R = 1.0 / (2.0 * math.sin(math.pi / n))
+        circumradius = 1.0 / (2.0 * math.sin(math.pi / n))
         
         # Create face copy with all properties from original
         local_face = Face(index=face.index)
@@ -254,9 +254,9 @@ def construct_polyhedron_realization(solution: RegularFacedPolyhedron) -> Regula
         
         for v_idx, v in enumerate(face.vertices):
             angle = 2.0 * math.pi * v_idx / n
-            x = R * math.cos(angle)
+            x = circumradius * math.cos(angle)
             y = 0.0
-            z = R * math.sin(angle)
+            z = circumradius * math.sin(angle)
             new_v = Vertex(index=v.index)
             new_v.x = x
             new_v.y = y
@@ -418,7 +418,7 @@ def construct_polyhedron_realization(solution: RegularFacedPolyhedron) -> Regula
     return solution
 
 
-def export_regular_faced_polyhedron_to_OBJ(model: RegularFacedPolyhedron, output_dir: str, filename: str):
+def export_regular_faced_polyhedron_to_obj(model: RegularFacedPolyhedron, output_dir: str, filename: str):
     """
     Export a RegularFacedPolyhedron to OBJ format.
     
@@ -474,9 +474,9 @@ def is_valid_realization(solution: RegularFacedPolyhedron, strict=False) -> Tupl
             continue
         p0 = e.vertices[0].pos
         p1 = e.vertices[1].pos
-        L = v_norm(p0 - p1)
-        if abs(L - 1.0) > 1e-6:
-            return False, f"Edge {e.index} length is not 1: {L}"
+        edge_length = v_norm(p0 - p1)
+        if abs(edge_length - 1.0) > 1e-6:
+            return False, f"Edge {e.index} length is not 1: {edge_length}"
         
     # Two vertices, edges, or faces sharing the same position indicates self-intersection or overlap. This is not an exhaustive check for self-intersection.
     if strict:
@@ -515,12 +515,12 @@ def is_valid_realization(solution: RegularFacedPolyhedron, strict=False) -> Tupl
         n = len(f.vertices)
         if n < 3:
             return False, f"Face {f.index} has less than 3 vertices."
-        R = 1.0 / (2.0 * math.sin(math.pi / n))
+        circumradius = 1.0 / (2.0 * math.sin(math.pi / n))
         for v in f.vertices:
             if not v.constructed:
                 continue
             r = v_norm(v.pos - f.pos)
-            if abs(r - R) > 1e-4:
-                return False, f"Vertex {v.index} of face {f.index} is at incorrect distance from face center: {r} (expected {R})"
+            if abs(r - circumradius) > 1e-4:
+                return False, f"Vertex {v.index} of face {f.index} is at incorrect distance from face center: {r} (expected {circumradius})"
 
     return True, "Valid realization"

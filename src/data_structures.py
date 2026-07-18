@@ -391,7 +391,7 @@ def stream_g6_graphs(path: str, start_index: int = 0, end_index: int = None) -> 
                 if eof:
                     return
 
-def scout_face_set(G: nx.Graph) -> Dict[int, int]:
+def scout_face_set(graph: nx.Graph) -> Dict[int, int]:
     """
     Given a dict mapping face types (e.g., "triangle", "square", "pentagon") to counts,
     return a concise string representation like "[8 triangles, 3 squares, 2 pentagons]".
@@ -399,73 +399,73 @@ def scout_face_set(G: nx.Graph) -> Dict[int, int]:
     The face types are sorted by vertex count (e.g., triangle before square).
     """
     face_type_counts: Dict[int, int] = {}
-    for node in G.nodes():
-        degree = G.degree[node]
+    for node in graph.nodes():
+        degree = graph.degree[node]
         if degree < 3:
             raise ValueError(f"Invalid face with degree {degree} at node {node}")
         face_type_counts[degree] = face_type_counts.get(degree, 0) + 1
     return face_type_counts
 
-def create_polyhedron_from_graph(G: nx.Graph) -> RegularFacedPolyhedron:
+def create_polyhedron_from_graph(graph: nx.Graph) -> RegularFacedPolyhedron:
     """
-    G is a 3-connected simple planar graph where:
+    'graph' is a 3-connected simple planar graph where:
 
       - nodes = faces of the polyhedron
-      - planar faces of G = vertices of the polyhedron
-      - edges of G = edges of the polyhedron (adjacency of faces)
+      - planar faces of graph = vertices of the polyhedron
+      - edges of graph = edges of the polyhedron (adjacency of faces)
 
     This builds a RegularFacedPolyhedron where:
-      polyhedron.faces    ↔ nodes of G
-      polyhedron.vertices ↔ faces(embedding) of G
-      polyhedron.edges    ↔ edges of G
+      polyhedron.faces    ↔ nodes of graph
+      polyhedron.vertices ↔ faces(embedding) of graph
+      polyhedron.edges    ↔ edges of graph
     """
-    is_planar, embedding = nx.check_planarity(G)
+    is_planar, embedding = nx.check_planarity(graph)
     if not is_planar:
         raise ValueError("Input graph is not planar")
 
     # --- step 1: graph nodes → polyhedron faces ---
 
-    node_list = list(G.nodes())
+    node_list = list(graph.nodes())
     node_to_face_idx = {u: i for i, u in enumerate(node_list)}
     faces: List[Face] = [Face(index=i) for i in range(len(node_list))]
 
-    # --- step 2: planar faces of G → polyhedron vertices ---
+    # --- step 2: planar faces of graph → polyhedron vertices ---
 
     face_cycles = enumerate_embedding_faces(embedding)  # list of node-cycles
     vertices: List[Vertex] = [Vertex(index=i) for i in range(len(face_cycles))]
 
     # Optional Euler sanity check: V - E + F = 2
-    V_poly = len(face_cycles)          # vertices of polyhedron
-    E_poly = G.number_of_edges()       # edges of polyhedron
-    F_poly = len(node_list)            # faces of polyhedron
-    if V_poly - E_poly + F_poly != 2:
+    polyhedron_vertex_count = len(face_cycles)          # vertices of polyhedron
+    polyhedron_edge_count = graph.number_of_edges()       # edges of polyhedron
+    polyhedron_face_count = len(node_list)            # faces of polyhedron
+    if polyhedron_vertex_count - polyhedron_edge_count + polyhedron_face_count != 2:
         raise RuntimeError(
-            f"Euler check failed: V={V_poly}, E={E_poly}, F={F_poly}"
+            f"Euler check failed: V={polyhedron_vertex_count}, E={polyhedron_edge_count}, F={polyhedron_face_count}"
         )
 
     # Fill face <-> vertex incidence using indices
     for v_idx, cycle in enumerate(face_cycles):
-        V = vertices[v_idx]
+        vertex = vertices[v_idx]
         for node in cycle:
             f_idx = node_to_face_idx[node]
-            F = faces[f_idx]
-            if V not in F.vertices:
-                F.vertices.append(V)
-            if F not in V.faces:
-                V.faces.append(F)
+            face = faces[f_idx]
+            if vertex not in face.vertices:
+                face.vertices.append(vertex)
+            if face not in vertex.faces:
+                vertex.faces.append(face)
 
     # --- step 3: graph edges → polyhedron edges ---
 
     edges: List[Edge] = []
     edge_index = 0
 
-    for u, v in G.edges():
-        Fu = faces[node_to_face_idx[u]]
-        Fv = faces[node_to_face_idx[v]]
+    for u, v in graph.edges():
+        face_u = faces[node_to_face_idx[u]]
+        face_v = faces[node_to_face_idx[v]]
 
         # Use vertex indices instead of Vertex objects for set operations
-        indices_u = {vert.index for vert in Fu.vertices}
-        indices_v = {vert.index for vert in Fv.vertices}
+        indices_u = {vert.index for vert in face_u.vertices}
+        indices_v = {vert.index for vert in face_v.vertices}
         common_indices = list(indices_u & indices_v)
 
         if len(common_indices) != 2:
@@ -481,9 +481,9 @@ def create_polyhedron_from_graph(G: nx.Graph) -> RegularFacedPolyhedron:
         edge_index += 1
 
         # register adjacency
-        e.faces = [Fu, Fv]
-        Fu.edges.append(e)
-        Fv.edges.append(e)
+        e.faces = [face_u, face_v]
+        face_u.edges.append(e)
+        face_v.edges.append(e)
         v0.edges.append(e)
         v1.edges.append(e)
 
@@ -491,15 +491,15 @@ def create_polyhedron_from_graph(G: nx.Graph) -> RegularFacedPolyhedron:
 
     # --- step 4: order vertices around each face (cyclic boundary) ---
 
-    for F in faces:
-        if not F.vertices:
+    for face in faces:
+        if not face.vertices:
             continue
 
         # Work in index space to avoid hashing Vertex
-        idxs = [v.index for v in F.vertices]
+        idxs = [v.index for v in face.vertices]
         adj: Dict[int, List[int]] = {i: [] for i in idxs}
 
-        for e in F.edges:
+        for e in face.edges:
             i0 = e.vertices[0].index
             i1 = e.vertices[1].index
             if i0 in adj and i1 in adj:
@@ -537,69 +537,69 @@ def create_polyhedron_from_graph(G: nx.Graph) -> RegularFacedPolyhedron:
             raise ValueError("Couldn't reconstruct cyclic order of vertices around a face")
 
         # Map indices back to Vertex objects in the right cyclic order
-        F.vertices = [vertices[i] for i in order_idxs]
+        face.vertices = [vertices[i] for i in order_idxs]
 
         # Reorder the face's edges to match the cyclic vertex ordering.
         # For each consecutive vertex pair (v_i, v_{i+1}) there must be
         # an edge in the face connecting them; find that edge and attach
         # in the same cyclic order as vertices.
         new_face_edges: List[Edge] = []
-        m = len(F.vertices)
+        m = len(face.vertices)
         for i in range(m):
-            v0 = F.vertices[i]
-            v1 = F.vertices[(i + 1) % m]
+            v0 = face.vertices[i]
+            v1 = face.vertices[(i + 1) % m]
             found_edge = None
             # Prefer searching v0.edges which should contain the boundary edges
             for e in v0.edges:
                 if (e.vertices[0] is v0 and e.vertices[1] is v1) or (e.vertices[1] is v0 and e.vertices[0] is v1):
                     found_edge = e
                     break
-            # Fallback: search the previously collected F.edges
+            # Fallback: search the previously collected face.edges
             if found_edge is None:
-                for e in F.edges:
+                for e in face.edges:
                     if v0 in e.vertices and v1 in e.vertices:
                         found_edge = e
                         break
             if found_edge is None:
                 raise ValueError("Couldn't find edge for consecutive vertices in face")
             new_face_edges.append(found_edge)
-        F.edges = new_face_edges
+        face.edges = new_face_edges
 
     # --- step 5: reconstruct vertex.edge ordering to be cyclic around vertex ---
 
-    for V in vertices:
-        if not V.faces:
+    for vertex in vertices:
+        if not vertex.faces:
             continue
         new_vertex_edges: List[Edge] = []
-        n = len(V.faces)
+        n = len(vertex.faces)
         # For each consecutive pair of faces around the vertex, the shared
         # edge between those faces is the incident polygon edge at that
         # position around the vertex.
         for i in range(n):
-            f0 = V.faces[i]
-            f1 = V.faces[(i + 1) % n]
+            f0 = vertex.faces[i]
+            f1 = vertex.faces[(i + 1) % n]
             found_edge = None
-            # Search edges of f0 for an edge that also has f1 and contains V
+            # Search edges of f0 for an edge that also has f1 and contains vertex
             for e in f0.edges:
-                if f1 in e.faces and (e.vertices[0] is V or e.vertices[1] is V):
+                if f1 in e.faces and (e.vertices[0] is vertex or e.vertices[1] is vertex):
                     found_edge = e
                     break
             if found_edge is None:
                 # Fallback: scan all incident edges attached earlier
-                for e in V.edges:
-                    if f0 in e.faces and f1 in e.faces and (e.vertices[0] is V or e.vertices[1] is V):
+                for e in vertex.edges:
+                    if f0 in e.faces and f1 in e.faces and (e.vertices[0] is vertex or e.vertices[1] is vertex):
                         found_edge = e
                         break
             if found_edge is None:
                 # As a last resort search global edge list
                 for e in edges:
-                    if f0 in e.faces and f1 in e.faces and (e.vertices[0] is V or e.vertices[1] is V):
+                    if f0 in e.faces and f1 in e.faces and (e.vertices[0] is vertex or e.vertices[1] is vertex):
                         found_edge = e
                         break
             if found_edge is None:
                 raise ValueError("Couldn't reconstruct cyclic edge order for vertex")
             new_vertex_edges.append(found_edge)
-        V.edges = new_vertex_edges
+        vertex.edges = new_vertex_edges
 
     # --- step 6: Ensure cyclic winding order is consistent in the Face.vertices arrays ---
     # For each face, check its winding order against its neighbors.

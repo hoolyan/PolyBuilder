@@ -29,12 +29,12 @@ def num_solutions(vertex: Vertex) -> int:
     if len(vertex.edges) < 3: # Something has gone horribly wrong
         raise ValueError("Vertices must be attached to at least 3 edges")
     elif len(vertex.edges) == 3:
-        cornerAAngle = math.pi - 2.0 * math.pi/len(vertex.faces[0].vertices)
-        cornerBAngle = math.pi - 2.0 * math.pi/len(vertex.faces[1].vertices)
-        cornerCAngle = math.pi - 2.0 * math.pi/len(vertex.faces[2].vertices)
-        if cornerAAngle + cornerBAngle <= cornerCAngle + 1e-12 or cornerAAngle + cornerCAngle <= cornerBAngle + 1e-12 or cornerBAngle + cornerCAngle <= cornerAAngle + 1e-12: # Simple check to determine if there are no solutions. It's impossible for two connected faces to span far enough to connect to the remaining edges of the third corner either at all, or without becoming coplanar.
+        corner_a_angle = math.pi - 2.0 * math.pi/len(vertex.faces[0].vertices)
+        corner_b_angle = math.pi - 2.0 * math.pi/len(vertex.faces[1].vertices)
+        corner_c_angle = math.pi - 2.0 * math.pi/len(vertex.faces[2].vertices)
+        if corner_a_angle + corner_b_angle <= corner_c_angle + 1e-12 or corner_a_angle + corner_c_angle <= corner_b_angle + 1e-12 or corner_b_angle + corner_c_angle <= corner_a_angle + 1e-12: # Simple check to determine if there are no solutions. It's impossible for two connected faces to span far enough to connect to the remaining edges of the third corner either at all, or without becoming coplanar.
             return 0
-        if cornerAAngle + cornerBAngle + cornerCAngle >= 2.0 * math.pi - 1e-12:
+        if corner_a_angle + corner_b_angle + corner_c_angle >= 2.0 * math.pi - 1e-12:
             return 0
         # Now check for realized dihedrals
         num_assigned_dihedrals = sum(1 for edge in vertex.edges if edge.has_assigned_dihedral)
@@ -122,10 +122,10 @@ def spherical_triangle_angles_from_sides(a, b, c):
     """
     Unit-sphere spherical triangle.
     Inputs: side lengths a,b,c in (0, pi).
-    Returns: angles A,B,C in [0, pi].
+    Returns: angles angle_a, angle_b, angle_c in [0, pi].
     """
     
-    # Denominators: sin(b)sin(c) etc. Must be nonzero.
+    # Denominators: sin(b), sin(c) etc. Must be nonzero.
     sb, sc, sa = math.sin(b), math.sin(c), math.sin(a)
     
     if abs(sb * sc) < 1e-12 or abs(sa * sc) < 1e-12 or abs(sa * sb) < 1e-12:
@@ -133,34 +133,34 @@ def spherical_triangle_angles_from_sides(a, b, c):
         print("a =", a, "b =", b, "c =", c)
         raise ValueError("Degenerate spherical triangle (sin terms too small).")
     
-    if abs(a + b + c - 2.0 * math.pi) < 1e-12: # coplanar arcs are valid input, but precision issues will cause A, B, and C to be imprecise approximations of pi.
+    if abs(a + b + c - 2.0 * math.pi) < 1e-12: # coplanar arcs are valid input, but precision issues will cause angle_a, angle_b, and angle_c to be imprecise approximations of pi.
         return math.pi, math.pi, math.pi
 
-    cosA = (math.cos(a) - math.cos(b) * math.cos(c)) / (sb * sc)
-    cosB = (math.cos(b) - math.cos(a) * math.cos(c)) / (sa * sc)
-    cosC = (math.cos(c) - math.cos(a) * math.cos(b)) / (sa * sb)
+    cos_a = (math.cos(a) - math.cos(b) * math.cos(c)) / (sb * sc)
+    cos_b = (math.cos(b) - math.cos(a) * math.cos(c)) / (sa * sc)
+    cos_c = (math.cos(c) - math.cos(a) * math.cos(b)) / (sa * sb)
 
     # Clamp for floating noise
-    A = math.acos(clamp(cosA))
-    B = math.acos(clamp(cosB))
-    C = math.acos(clamp(cosC))
-    return A, B, C
+    angle_a = math.acos(clamp(cos_a))
+    angle_b = math.acos(clamp(cos_b))
+    angle_c = math.acos(clamp(cos_c))
+    return angle_a, angle_b, angle_c
 
 class SphericalTriangle:
     """
     Representation of a spherical triangle on the unit sphere.
 
     Attributes:
-      a, b, c: side lengths (arc lengths in radians) opposite vertices A, B, C
-      A, B, C: angles at vertices A, B, C (in radians)
+      arc_bc, arc_ca, arc_ab: side lengths (arc lengths in radians) opposite vertices vertex_index_a, vertex_index_b, vertex_index_c
+      internal_angle_a, internal_angle_b, internal_angle_c: angles at vertices vertex_index_a, vertex_index_b, vertex_index_c (in radians)
     """
 
-    vertex_index_A: int
-    vertex_index_B: int
-    vertex_index_C: int
-    internal_angle_A: float = None
-    internal_angle_B: float = None
-    internal_angle_C: float = None
+    vertex_index_a: int
+    vertex_index_b: int
+    vertex_index_c: int
+    internal_angle_a: float = None
+    internal_angle_b: float = None
+    internal_angle_c: float = None
     arc_index_ab: int
     arc_index_bc: int
     arc_index_ca: int
@@ -170,30 +170,30 @@ class SphericalTriangle:
     solvable = True
     solution_valid = True
 
-    def compute_SSS(self, convex: bool = True): # Solve for angles given arcs. If convex is False, return the concave solution instead of the convex solution.
+    def compute_sss(self, convex: bool = True): # Solve for angles given arcs. If convex is False, return the concave solution instead of the convex solution.
         if not (self.arc_ab is not None and self.arc_bc is not None and self.arc_ca is not None):
             raise ValueError("Insufficient data for SSS computation in spherical triangle.")
         if not spherical_triangle_arcs_valid(self.arc_ab, self.arc_bc, self.arc_ca):
             self.solution_valid = False
-        A, B, C = spherical_triangle_angles_from_sides(self.arc_bc, self.arc_ca, self.arc_ab)
-        if self.internal_angle_A is not None and (abs(self.internal_angle_A - A) > 1e-12 and abs(self.internal_angle_A - (2.0 * math.pi - A)) > 1e-12):
+        angle_a, angle_b, angle_c = spherical_triangle_angles_from_sides(self.arc_bc, self.arc_ca, self.arc_ab)
+        if self.internal_angle_a is not None and (abs(self.internal_angle_a - angle_a) > 1e-12 and abs(self.internal_angle_a - (2.0 * math.pi - angle_a)) > 1e-12):
             self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-        if self.internal_angle_B is not None and (abs(self.internal_angle_B - B) > 1e-12 and abs(self.internal_angle_B - (2.0 * math.pi - B)) > 1e-12):
+        if self.internal_angle_b is not None and (abs(self.internal_angle_b - angle_b) > 1e-12 and abs(self.internal_angle_b - (2.0 * math.pi - angle_b)) > 1e-12):
             self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-        if self.internal_angle_C is not None and (abs(self.internal_angle_C - C) > 1e-12 and abs(self.internal_angle_C - (2.0 * math.pi - C)) > 1e-12):
+        if self.internal_angle_c is not None and (abs(self.internal_angle_c - angle_c) > 1e-12 and abs(self.internal_angle_c - (2.0 * math.pi - angle_c)) > 1e-12):
             self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-        self.internal_angle_A = A
-        self.internal_angle_B = B
-        self.internal_angle_C = C
+        self.internal_angle_a = angle_a
+        self.internal_angle_b = angle_b
+        self.internal_angle_c = angle_c
         if not convex:
-            self.internal_angle_A = 2.0 * math.pi - self.internal_angle_A
-            self.internal_angle_B = 2.0 * math.pi - self.internal_angle_B
-            self.internal_angle_C = 2.0 * math.pi - self.internal_angle_C
+            self.internal_angle_a = 2.0 * math.pi - self.internal_angle_a
+            self.internal_angle_b = 2.0 * math.pi - self.internal_angle_b
+            self.internal_angle_c = 2.0 * math.pi - self.internal_angle_c
 
-    def compute_SAS(self): # Solve for angles given two arcs and the included angle. Solution will be unambiguous.
-        internal_angle_A_defined = self.internal_angle_A is not None
-        internal_angle_B_defined = self.internal_angle_B is not None
-        internal_angle_C_defined = self.internal_angle_C is not None
+    def compute_sas(self): # Solve for angles given two arcs and the included angle. Solution will be unambiguous.
+        internal_angle_a_defined = self.internal_angle_a is not None
+        internal_angle_b_defined = self.internal_angle_b is not None
+        internal_angle_c_defined = self.internal_angle_c is not None
 
         arc_ab_defined = self.arc_ab is not None
         arc_bc_defined = self.arc_bc is not None
@@ -204,17 +204,17 @@ class SphericalTriangle:
         used_side_2: float
         use_case = 0
         
-        if internal_angle_A_defined and arc_ab_defined and arc_ca_defined:
-            used_angle = self.internal_angle_A
+        if internal_angle_a_defined and arc_ab_defined and arc_ca_defined:
+            used_angle = self.internal_angle_a
             used_side_1 = self.arc_ca
             used_side_2 = self.arc_ab
-        elif internal_angle_B_defined and arc_bc_defined and arc_ab_defined:
-            used_angle = self.internal_angle_B
+        elif internal_angle_b_defined and arc_bc_defined and arc_ab_defined:
+            used_angle = self.internal_angle_b
             used_side_1 = self.arc_ab
             used_side_2 = self.arc_bc
             use_case = 1
-        elif internal_angle_C_defined and arc_ca_defined and arc_bc_defined:
-            used_angle = self.internal_angle_C
+        elif internal_angle_c_defined and arc_ca_defined and arc_bc_defined:
+            used_angle = self.internal_angle_c
             used_side_1 = self.arc_bc
             used_side_2 = self.arc_ca
             use_case = 2
@@ -240,20 +240,20 @@ class SphericalTriangle:
             elif not spherical_triangle_arcs_valid(self.arc_ab, self.arc_bc, self.arc_ca):
                 self.solution_valid = False
             else:
-                A, B, C = spherical_triangle_angles_from_sides(arc_side_3, self.arc_ca, self.arc_ab)
+                angle_a, angle_b, angle_c = spherical_triangle_angles_from_sides(arc_side_3, self.arc_ca, self.arc_ab)
                 if concave:
-                    A = 2.0 * math.pi - A
-                    B = 2.0 * math.pi - B
-                    C = 2.0 * math.pi - C
-                if self.internal_angle_A is not None and (abs(self.internal_angle_A - A) > 1e-12):
+                    angle_a = 2.0 * math.pi - angle_a
+                    angle_b = 2.0 * math.pi - angle_b
+                    angle_c = 2.0 * math.pi - angle_c
+                if self.internal_angle_a is not None and (abs(self.internal_angle_a - angle_a) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                if self.internal_angle_B is not None and (abs(self.internal_angle_B - B) > 1e-12):
+                if self.internal_angle_b is not None and (abs(self.internal_angle_b - angle_b) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                if self.internal_angle_C is not None and (abs(self.internal_angle_C - C) > 1e-12):
+                if self.internal_angle_c is not None and (abs(self.internal_angle_c - angle_c) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                self.internal_angle_A = A
-                self.internal_angle_B = B
-                self.internal_angle_C = C
+                self.internal_angle_a = angle_a
+                self.internal_angle_b = angle_b
+                self.internal_angle_c = angle_c
         elif use_case == 1:
             if self.arc_ca is not None and (abs(self.arc_ca - arc_side_3) > 1e-12):
                 self.solution_valid = False # Arc length mismatch
@@ -263,20 +263,20 @@ class SphericalTriangle:
             elif not spherical_triangle_arcs_valid(self.arc_ab, self.arc_bc, self.arc_ca):
                 self.solution_valid = False
             else:
-                A, B, C = spherical_triangle_angles_from_sides(self.arc_bc, arc_side_3, self.arc_ab)
+                angle_a, angle_b, angle_c = spherical_triangle_angles_from_sides(self.arc_bc, arc_side_3, self.arc_ab)
                 if concave:
-                    A = 2.0 * math.pi - A
-                    B = 2.0 * math.pi - B
-                    C = 2.0 * math.pi - C
-                if self.internal_angle_A is not None and (abs(self.internal_angle_A - A) > 1e-12):
+                    angle_a = 2.0 * math.pi - angle_a
+                    angle_b = 2.0 * math.pi - angle_b
+                    angle_c = 2.0 * math.pi - angle_c
+                if self.internal_angle_a is not None and (abs(self.internal_angle_a - angle_a) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                if self.internal_angle_B is not None and (abs(self.internal_angle_B - B) > 1e-12):
+                if self.internal_angle_b is not None and (abs(self.internal_angle_b - angle_b) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                if self.internal_angle_C is not None and (abs(self.internal_angle_C - C) > 1e-12):
+                if self.internal_angle_c is not None and (abs(self.internal_angle_c - angle_c) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                self.internal_angle_A = A
-                self.internal_angle_B = B
-                self.internal_angle_C = C
+                self.internal_angle_a = angle_a
+                self.internal_angle_b = angle_b
+                self.internal_angle_c = angle_c
         elif use_case == 2:
             if self.arc_ab is not None and (abs(self.arc_ab - arc_side_3) > 1e-12):
                 self.solution_valid = False # Arc length mismatch
@@ -286,23 +286,23 @@ class SphericalTriangle:
             elif not spherical_triangle_arcs_valid(self.arc_ab, self.arc_bc, self.arc_ca):
                 self.solution_valid = False
             else:
-                A, B, C = spherical_triangle_angles_from_sides(self.arc_bc, self.arc_ca, arc_side_3)
+                angle_a, angle_b, angle_c = spherical_triangle_angles_from_sides(self.arc_bc, self.arc_ca, arc_side_3)
                 if concave:
-                    A = 2.0 * math.pi - A
-                    B = 2.0 * math.pi - B
-                    C = 2.0 * math.pi - C
-                if self.internal_angle_A is not None and (abs(self.internal_angle_A - A) > 1e-12):
+                    angle_a = 2.0 * math.pi - angle_a
+                    angle_b = 2.0 * math.pi - angle_b
+                    angle_c = 2.0 * math.pi - angle_c
+                if self.internal_angle_a is not None and (abs(self.internal_angle_a - angle_a) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                if self.internal_angle_B is not None and (abs(self.internal_angle_B - B) > 1e-12):
+                if self.internal_angle_b is not None and (abs(self.internal_angle_b - angle_b) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                if self.internal_angle_C is not None and (abs(self.internal_angle_C - C) > 1e-12):
+                if self.internal_angle_c is not None and (abs(self.internal_angle_c - angle_c) > 1e-12):
                     self.solution_valid = False # Inconsistent data; this triangle can't be realized with the given arcs and internal angle
-                self.internal_angle_A = A
-                self.internal_angle_B = B
-                self.internal_angle_C = C
+                self.internal_angle_a = angle_a
+                self.internal_angle_b = angle_b
+                self.internal_angle_c = angle_c
     
     def __repr__(self):
-        repr_str = (f"\nSphericalTriangle(vertex_index_A={self.vertex_index_A}, vertex_index_B={self.vertex_index_B}, vertex_index_C={self.vertex_index_C}, arc_index_ab={self.arc_index_ab}, arc_index_bc={self.arc_index_bc}, arc_index_ca={self.arc_index_ca}")
+        repr_str = (f"\nSphericalTriangle(vertex_index_a={self.vertex_index_a}, vertex_index_b={self.vertex_index_b}, vertex_index_c={self.vertex_index_c}, arc_index_ab={self.arc_index_ab}, arc_index_bc={self.arc_index_bc}, arc_index_ca={self.arc_index_ca}")
         if hasattr(self, 'arc_ab') and self.arc_ab is not None:
             repr_str += f", arc_ab: {self.arc_ab} radians"
         else:
@@ -315,25 +315,25 @@ class SphericalTriangle:
             repr_str += f", arc_ca: {self.arc_ca} radians"
         else:
             repr_str += f", arc_ca: None"
-        if hasattr(self, 'internal_angle_A') and self.internal_angle_A is not None:
-            repr_str += f", internal_angle_A: {self.internal_angle_A} radians"
+        if hasattr(self, 'internal_angle_a') and self.internal_angle_a is not None:
+            repr_str += f", internal_angle_a: {self.internal_angle_a} radians"
         else:
-            repr_str += f", internal_angle_A: None"
-        if hasattr(self, 'internal_angle_B') and self.internal_angle_B is not None:
-            repr_str += f", internal_angle_B: {self.internal_angle_B} radians"
+            repr_str += f", internal_angle_a: None"
+        if hasattr(self, 'internal_angle_b') and self.internal_angle_b is not None:
+            repr_str += f", internal_angle_b: {self.internal_angle_b} radians"
         else:
-            repr_str += f", internal_angle_B: None"
-        if hasattr(self, 'internal_angle_C') and self.internal_angle_C is not None:
-            repr_str += f", internal_angle_C: {self.internal_angle_C} radians)"
+            repr_str += f", internal_angle_b: None"
+        if hasattr(self, 'internal_angle_c') and self.internal_angle_c is not None:
+            repr_str += f", internal_angle_c: {self.internal_angle_c} radians)"
         else:
-            repr_str += f", internal_angle_C: None)"
+            repr_str += f", internal_angle_c: None)"
         
         return repr_str
     
-    def __init__(self, vertex_index_A: int, vertex_index_B: int, vertex_index_C: int, arc_index_ab: int, arc_index_bc: int, arc_index_ca: int):
-        self.vertex_index_A = vertex_index_A
-        self.vertex_index_B = vertex_index_B
-        self.vertex_index_C = vertex_index_C
+    def __init__(self, vertex_index_a: int, vertex_index_b: int, vertex_index_c: int, arc_index_ab: int, arc_index_bc: int, arc_index_ca: int):
+        self.vertex_index_a = vertex_index_a
+        self.vertex_index_b = vertex_index_b
+        self.vertex_index_c = vertex_index_c
         self.arc_index_ab = arc_index_ab
         self.arc_index_bc = arc_index_bc
         self.arc_index_ca = arc_index_ca
@@ -363,24 +363,24 @@ class SphericalTriangulation:
         """
         dihedral_angle = None
         for triangle in self.triangles:
-            if triangle.vertex_index_A == index:
-                if triangle.internal_angle_A is None:
+            if triangle.vertex_index_a == index:
+                if triangle.internal_angle_a is None:
                     raise ValueError("Triangulation not fully solved; missing internal angles.")
                 if dihedral_angle is None:
                     dihedral_angle = 0.0
-                dihedral_angle += triangle.internal_angle_A
-            elif triangle.vertex_index_B == index:
-                if triangle.internal_angle_B is None:
+                dihedral_angle += triangle.internal_angle_a
+            elif triangle.vertex_index_b == index:
+                if triangle.internal_angle_b is None:
                     raise ValueError("Triangulation not fully solved; missing internal angles.")
                 if dihedral_angle is None:
                     dihedral_angle = 0.0
-                dihedral_angle += triangle.internal_angle_B
-            elif triangle.vertex_index_C == index:
-                if triangle.internal_angle_C is None:
+                dihedral_angle += triangle.internal_angle_b
+            elif triangle.vertex_index_c == index:
+                if triangle.internal_angle_c is None:
                     raise ValueError("Triangulation not fully solved; missing internal angles.")
                 if dihedral_angle is None:
                     dihedral_angle = 0.0
-                dihedral_angle += triangle.internal_angle_C
+                dihedral_angle += triangle.internal_angle_c
         if dihedral_angle is not None:
             dihedral_clamp = math.floor(dihedral_angle / (2.0 * math.pi))
             dihedral_angle = dihedral_angle - dihedral_clamp * 2.0 * math.pi
@@ -401,123 +401,123 @@ class SphericalTriangulation:
             for triangle_index, triangle in enumerate(self.triangles):
                 if triangle_index in resolved_triangles_indices:
                     continue
-                if ((triangle.arc_ca is not None and triangle.arc_ab is not None and triangle.internal_angle_A is not None) or
-                    (triangle.arc_ab is not None and triangle.arc_bc is not None and triangle.internal_angle_B is not None) or
-                    (triangle.arc_bc is not None and triangle.arc_ca is not None and triangle.internal_angle_C is not None)):
+                if ((triangle.arc_ca is not None and triangle.arc_ab is not None and triangle.internal_angle_a is not None) or
+                    (triangle.arc_ab is not None and triangle.arc_bc is not None and triangle.internal_angle_b is not None) or
+                    (triangle.arc_bc is not None and triangle.arc_ca is not None and triangle.internal_angle_c is not None)):
                     # Have enough info to solve for the remaining arc and internal angles using SAS, yielding an unambiguous solution for this triangle.
-                    triangle.compute_SAS()
+                    triangle.compute_sas()
                     if not triangle.solution_valid:
                         solution_valid = False
                     progress_made = True
                 elif (triangle.arc_ab is not None and triangle.arc_bc is not None and triangle.arc_ca is not None):
                     # Have enough info to solve for the internal angles using SSS, yields ambiguous solutions for this triangle.
-                    triangle.compute_SSS(convex)
+                    triangle.compute_sss(convex)
                     if not triangle.solution_valid:
                         solution_valid = False
                     progress_made = True
                 else:
-                    if triangle.internal_angle_A is None:
-                        if self.dihedrals[triangle.vertex_index_A] is not None:
-                            vertex_A_internal_angle_remainder = self.dihedrals[triangle.vertex_index_A]
-                            vertex_A_internal_angle_solvable = True
+                    if triangle.internal_angle_a is None:
+                        if self.dihedrals[triangle.vertex_index_a] is not None:
+                            vertex_a_internal_angle_remainder = self.dihedrals[triangle.vertex_index_a]
+                            vertex_a_internal_angle_solvable = True
                             for other_triangle in self.triangles:
                                 if other_triangle == triangle:
                                     continue
-                                if other_triangle.vertex_index_A == triangle.vertex_index_A:
-                                    if other_triangle.internal_angle_A is not None:
-                                        vertex_A_internal_angle_remainder -= other_triangle.internal_angle_A
+                                if other_triangle.vertex_index_a == triangle.vertex_index_a:
+                                    if other_triangle.internal_angle_a is not None:
+                                        vertex_a_internal_angle_remainder -= other_triangle.internal_angle_a
                                     else:
-                                        vertex_A_internal_angle_solvable = False
+                                        vertex_a_internal_angle_solvable = False
                                         break
-                                if other_triangle.vertex_index_B == triangle.vertex_index_A:
-                                    if other_triangle.internal_angle_B is not None:
-                                        vertex_A_internal_angle_remainder -= other_triangle.internal_angle_B
+                                if other_triangle.vertex_index_b == triangle.vertex_index_a:
+                                    if other_triangle.internal_angle_b is not None:
+                                        vertex_a_internal_angle_remainder -= other_triangle.internal_angle_b
                                     else:
-                                        vertex_A_internal_angle_solvable = False
+                                        vertex_a_internal_angle_solvable = False
                                         break
-                                if other_triangle.vertex_index_C == triangle.vertex_index_A:
-                                    if other_triangle.internal_angle_C is not None:
-                                        vertex_A_internal_angle_remainder -= other_triangle.internal_angle_C
+                                if other_triangle.vertex_index_c == triangle.vertex_index_a:
+                                    if other_triangle.internal_angle_c is not None:
+                                        vertex_a_internal_angle_remainder -= other_triangle.internal_angle_c
                                     else:
-                                        vertex_A_internal_angle_solvable = False
+                                        vertex_a_internal_angle_solvable = False
                                         break
-                            if vertex_A_internal_angle_solvable:
-                                angle_clamp = math.floor(vertex_A_internal_angle_remainder / (2.0 * math.pi))
-                                vertex_A_internal_angle_remainder -= angle_clamp * 2.0 * math.pi
-                                if math.pi * 2.0 - vertex_A_internal_angle_remainder < 1e-12:
-                                    vertex_A_internal_angle_remainder -= math.pi * 2.0
-                                triangle.internal_angle_A = vertex_A_internal_angle_remainder
-                                if triangle.internal_angle_A < 1e-12:
+                            if vertex_a_internal_angle_solvable:
+                                angle_clamp = math.floor(vertex_a_internal_angle_remainder / (2.0 * math.pi))
+                                vertex_a_internal_angle_remainder -= angle_clamp * 2.0 * math.pi
+                                if math.pi * 2.0 - vertex_a_internal_angle_remainder < 1e-12:
+                                    vertex_a_internal_angle_remainder -= math.pi * 2.0
+                                triangle.internal_angle_a = vertex_a_internal_angle_remainder
+                                if triangle.internal_angle_a < 1e-12:
                                     triangle.solution_valid = False
                                     solution_valid = False
                                 progress_made = True
-                    if triangle.internal_angle_B is None:
-                        if self.dihedrals[triangle.vertex_index_B] is not None:
-                            vertex_B_internal_angle_remainder = self.dihedrals[triangle.vertex_index_B]
-                            vertex_B_internal_angle_solvable = True
+                    if triangle.internal_angle_b is None:
+                        if self.dihedrals[triangle.vertex_index_b] is not None:
+                            vertex_b_internal_angle_remainder = self.dihedrals[triangle.vertex_index_b]
+                            vertex_b_internal_angle_solvable = True
                             for other_triangle in self.triangles:
                                 if other_triangle == triangle:
                                     continue
-                                if other_triangle.vertex_index_A == triangle.vertex_index_B:
-                                    if other_triangle.internal_angle_A is not None:
-                                        vertex_B_internal_angle_remainder -= other_triangle.internal_angle_A
+                                if other_triangle.vertex_index_a == triangle.vertex_index_b:
+                                    if other_triangle.internal_angle_a is not None:
+                                        vertex_b_internal_angle_remainder -= other_triangle.internal_angle_a
                                     else:
-                                        vertex_B_internal_angle_solvable = False
+                                        vertex_b_internal_angle_solvable = False
                                         break
-                                if other_triangle.vertex_index_B == triangle.vertex_index_B:
-                                    if other_triangle.internal_angle_B is not None:
-                                        vertex_B_internal_angle_remainder -= other_triangle.internal_angle_B
+                                if other_triangle.vertex_index_b == triangle.vertex_index_b:
+                                    if other_triangle.internal_angle_b is not None:
+                                        vertex_b_internal_angle_remainder -= other_triangle.internal_angle_b
                                     else:
-                                        vertex_B_internal_angle_solvable = False
+                                        vertex_b_internal_angle_solvable = False
                                         break
-                                if other_triangle.vertex_index_C == triangle.vertex_index_B:
-                                    if other_triangle.internal_angle_C is not None:
-                                        vertex_B_internal_angle_remainder -= other_triangle.internal_angle_C
+                                if other_triangle.vertex_index_c == triangle.vertex_index_b:
+                                    if other_triangle.internal_angle_c is not None:
+                                        vertex_b_internal_angle_remainder -= other_triangle.internal_angle_c
                                     else:
-                                        vertex_B_internal_angle_solvable = False
+                                        vertex_b_internal_angle_solvable = False
                                         break
-                            if vertex_B_internal_angle_solvable:
-                                angle_clamp = math.floor(vertex_B_internal_angle_remainder / (2.0 * math.pi))
-                                vertex_B_internal_angle_remainder -= angle_clamp * 2.0 * math.pi
-                                if math.pi * 2.0 - vertex_B_internal_angle_remainder < 1e-12:
-                                    vertex_B_internal_angle_remainder -= math.pi * 2.0
-                                triangle.internal_angle_B = vertex_B_internal_angle_remainder
-                                if triangle.internal_angle_B < 1e-12:
+                            if vertex_b_internal_angle_solvable:
+                                angle_clamp = math.floor(vertex_b_internal_angle_remainder / (2.0 * math.pi))
+                                vertex_b_internal_angle_remainder -= angle_clamp * 2.0 * math.pi
+                                if math.pi * 2.0 - vertex_b_internal_angle_remainder < 1e-12:
+                                    vertex_b_internal_angle_remainder -= math.pi * 2.0
+                                triangle.internal_angle_b = vertex_b_internal_angle_remainder
+                                if triangle.internal_angle_b < 1e-12:
                                     triangle.solution_valid = False
                                     solution_valid = False
                                 progress_made = True
-                    if triangle.internal_angle_C is None:
-                        if self.dihedrals[triangle.vertex_index_C] is not None:
-                            vertex_C_internal_angle_remainder = self.dihedrals[triangle.vertex_index_C]
-                            vertex_C_internal_angle_solvable = True
+                    if triangle.internal_angle_c is None:
+                        if self.dihedrals[triangle.vertex_index_c] is not None:
+                            vertex_c_internal_angle_remainder = self.dihedrals[triangle.vertex_index_c]
+                            vertex_c_internal_angle_solvable = True
                             for other_triangle in self.triangles:
                                 if other_triangle == triangle:
                                     continue
-                                if other_triangle.vertex_index_A == triangle.vertex_index_C:
-                                    if other_triangle.internal_angle_A is not None:
-                                        vertex_C_internal_angle_remainder -= other_triangle.internal_angle_A
+                                if other_triangle.vertex_index_a == triangle.vertex_index_c:
+                                    if other_triangle.internal_angle_a is not None:
+                                        vertex_c_internal_angle_remainder -= other_triangle.internal_angle_a
                                     else:
-                                        vertex_C_internal_angle_solvable = False
+                                        vertex_c_internal_angle_solvable = False
                                         break
-                                if other_triangle.vertex_index_B == triangle.vertex_index_C:
-                                    if other_triangle.internal_angle_B is not None:
-                                        vertex_C_internal_angle_remainder -= other_triangle.internal_angle_B
+                                if other_triangle.vertex_index_b == triangle.vertex_index_c:
+                                    if other_triangle.internal_angle_b is not None:
+                                        vertex_c_internal_angle_remainder -= other_triangle.internal_angle_b
                                     else:
-                                        vertex_C_internal_angle_solvable = False
+                                        vertex_c_internal_angle_solvable = False
                                         break
-                                if other_triangle.vertex_index_C == triangle.vertex_index_C:
-                                    if other_triangle.internal_angle_C is not None:
-                                        vertex_C_internal_angle_remainder -= other_triangle.internal_angle_C
+                                if other_triangle.vertex_index_c == triangle.vertex_index_c:
+                                    if other_triangle.internal_angle_c is not None:
+                                        vertex_c_internal_angle_remainder -= other_triangle.internal_angle_c
                                     else:
-                                        vertex_C_internal_angle_solvable = False
+                                        vertex_c_internal_angle_solvable = False
                                         break
-                            if vertex_C_internal_angle_solvable:
-                                angle_clamp = math.floor(vertex_C_internal_angle_remainder / (2.0 * math.pi))
-                                vertex_C_internal_angle_remainder -= angle_clamp * 2.0 * math.pi
-                                if math.pi * 2.0 - vertex_C_internal_angle_remainder < 1e-12:
-                                    vertex_C_internal_angle_remainder -= math.pi * 2.0
-                                triangle.internal_angle_C = vertex_C_internal_angle_remainder
-                                if triangle.internal_angle_C < 1e-12:
+                            if vertex_c_internal_angle_solvable:
+                                angle_clamp = math.floor(vertex_c_internal_angle_remainder / (2.0 * math.pi))
+                                vertex_c_internal_angle_remainder -= angle_clamp * 2.0 * math.pi
+                                if math.pi * 2.0 - vertex_c_internal_angle_remainder < 1e-12:
+                                    vertex_c_internal_angle_remainder -= math.pi * 2.0
+                                triangle.internal_angle_c = vertex_c_internal_angle_remainder
+                                if triangle.internal_angle_c < 1e-12:
                                     triangle.solution_valid = False
                                     solution_valid = False
                                 progress_made = True
@@ -584,9 +584,9 @@ class SphericalTriangulation:
                 elif ((triangle.arc_ca is not None and
                        triangle.arc_ab is not None and
                        triangle.arc_bc is not None and
-                       triangle.internal_angle_A is not None and
-                       triangle.internal_angle_B is not None and
-                       triangle.internal_angle_C is not None)):
+                       triangle.internal_angle_a is not None and
+                       triangle.internal_angle_b is not None and
+                       triangle.internal_angle_c is not None)):
                     resolved_triangles_indices.append(triangle_index)
             if not solvable or not solution_valid:
                 self.solvable = solvable
@@ -620,37 +620,37 @@ class SphericalTriangulation:
         missing_edge_index = polyhedron_vertex.edges.index(missing_edge)
         polyhedron_vertex_degree = len(polyhedron_vertex.edges)
 
-        spherical_polygon_A_vertex_index = missing_edge_index
-        spherical_polygon_B_vertex_index = (missing_edge_index + 1) % polyhedron_vertex_degree
-        spherical_polygon_C_vertex_index = (missing_edge_index + 2) % polyhedron_vertex_degree
+        spherical_polygon_a_vertex_index = missing_edge_index
+        spherical_polygon_b_vertex_index = (missing_edge_index + 1) % polyhedron_vertex_degree
+        spherical_polygon_c_vertex_index = (missing_edge_index + 2) % polyhedron_vertex_degree
         current_arc_ab_index = None
         current_arc_bc_index = None
         current_arc_ca_index = None
         internal_arc_index = max(e.index for e in polyhedron_vertex.edges) + 1
 
-        for face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
-            if face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
+        for face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
+            if face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
                 spherical_polygon_arc_ab = math.pi - 2.0 * math.pi / len(face.vertices)
                 current_arc_ab_index = polyhedron_vertex.faces.index(face)
                 break
 
         spherical_polygon_arc_bc = None
-        for face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
-            if face in polyhedron_vertex.edges[spherical_polygon_C_vertex_index].faces:
+        for face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
+            if face in polyhedron_vertex.edges[spherical_polygon_c_vertex_index].faces:
                 spherical_polygon_arc_bc = math.pi - 2.0 * math.pi / len(face.vertices)
                 current_arc_bc_index = polyhedron_vertex.faces.index(face)
                 break
 
         spherical_polygon_arc_ca = None
-        for face in polyhedron_vertex.edges[spherical_polygon_C_vertex_index].faces:
-            if face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
+        for face in polyhedron_vertex.edges[spherical_polygon_c_vertex_index].faces:
+            if face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
                 spherical_polygon_arc_ca = math.pi - 2.0 * math.pi / len(face.vertices)
                 current_arc_ca_index = polyhedron_vertex.faces.index(face)
                 break
 
-        root_vertex_index_fan_1 = spherical_polygon_A_vertex_index
-        root_vertex_index_fan_2 = spherical_polygon_B_vertex_index
-        root_vertex_index_fan_3 = spherical_polygon_C_vertex_index
+        root_vertex_index_fan_1 = spherical_polygon_a_vertex_index
+        root_vertex_index_fan_2 = spherical_polygon_b_vertex_index
+        root_vertex_index_fan_3 = spherical_polygon_c_vertex_index
 
         central_triangle_arc_index_fan_1 = None
         central_triangle_arc_index_fan_2 = None
@@ -659,30 +659,30 @@ class SphericalTriangulation:
         triangulation_complete = False
 
         # First fan
-        for face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
-            if face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
+        for face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
+            if face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
                 central_triangle_arc_index_fan_1 = polyhedron_vertex.faces.index(face)
                 break
 
-        while polyhedron_vertex.edges[spherical_polygon_B_vertex_index].has_assigned_dihedral and not polyhedron_vertex.edges[spherical_polygon_C_vertex_index] == missing_edge:
+        while polyhedron_vertex.edges[spherical_polygon_b_vertex_index].has_assigned_dihedral and not polyhedron_vertex.edges[spherical_polygon_c_vertex_index] == missing_edge:
             
             spherical_polygon_arc_ab = None
-            for face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
                     spherical_polygon_arc_ab = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_ab_index = polyhedron_vertex.faces.index(face)
                     break
 
             spherical_polygon_arc_bc = None
-            for face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_C_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_c_vertex_index].faces:
                     spherical_polygon_arc_bc = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_bc_index = polyhedron_vertex.faces.index(face)
                     break
 
             spherical_polygon_arc_ca = None
-            for face in polyhedron_vertex.edges[spherical_polygon_C_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_c_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
                     spherical_polygon_arc_ca = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_ca_index = polyhedron_vertex.faces.index(face)
                     break
@@ -695,7 +695,7 @@ class SphericalTriangulation:
                 print("Error in computing spherical polygon with edges:")
                 for face in polyhedron_vertex.faces:
                     print(polyhedron_vertex.faces.index(face), ":",len(face.vertices))
-                print("Vertices", spherical_polygon_B_vertex_index, "and", spherical_polygon_C_vertex_index, "must share an edge")
+                print("Vertices", spherical_polygon_b_vertex_index, "and", spherical_polygon_c_vertex_index, "must share an edge")
                 print("And vertex internal angles:")
                 for edge in polyhedron_vertex.edges:
                     print(edge.has_assigned_dihedral)
@@ -705,59 +705,59 @@ class SphericalTriangulation:
                 internal_arc_index += 1
                 current_arc_ca_index = internal_arc_index
 
-            new_triangle = SphericalTriangle(spherical_polygon_A_vertex_index, spherical_polygon_B_vertex_index, spherical_polygon_C_vertex_index, current_arc_ab_index, current_arc_bc_index, current_arc_ca_index)
+            new_triangle = SphericalTriangle(spherical_polygon_a_vertex_index, spherical_polygon_b_vertex_index, spherical_polygon_c_vertex_index, current_arc_ab_index, current_arc_bc_index, current_arc_ca_index)
             
             central_triangle_arc_index_fan_1 = current_arc_ca_index
         
-            if spherical_polygon_arc_ca is not None and spherical_polygon_arc_ab is not None and polyhedron_vertex.edges[spherical_polygon_A_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_A = polyhedron_vertex.edges[spherical_polygon_A_vertex_index].dihedral
-            if spherical_polygon_arc_ab is not None and spherical_polygon_arc_bc is not None and polyhedron_vertex.edges[spherical_polygon_B_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_B = polyhedron_vertex.edges[spherical_polygon_B_vertex_index].dihedral
-            if spherical_polygon_arc_bc is not None and spherical_polygon_arc_ca is not None and polyhedron_vertex.edges[spherical_polygon_C_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_C = polyhedron_vertex.edges[spherical_polygon_C_vertex_index].dihedral
+            if spherical_polygon_arc_ca is not None and spherical_polygon_arc_ab is not None and polyhedron_vertex.edges[spherical_polygon_a_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_a = polyhedron_vertex.edges[spherical_polygon_a_vertex_index].dihedral
+            if spherical_polygon_arc_ab is not None and spherical_polygon_arc_bc is not None and polyhedron_vertex.edges[spherical_polygon_b_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_b = polyhedron_vertex.edges[spherical_polygon_b_vertex_index].dihedral
+            if spherical_polygon_arc_bc is not None and spherical_polygon_arc_ca is not None and polyhedron_vertex.edges[spherical_polygon_c_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_c = polyhedron_vertex.edges[spherical_polygon_c_vertex_index].dihedral
 
             new_triangle.arc_ab = spherical_polygon_arc_ab
             new_triangle.arc_bc = spherical_polygon_arc_bc
             new_triangle.arc_ca = spherical_polygon_arc_ca
             
             self.triangles.append(new_triangle)
-            spherical_polygon_B_vertex_index = spherical_polygon_C_vertex_index
-            spherical_polygon_C_vertex_index = (spherical_polygon_C_vertex_index + 1) % polyhedron_vertex_degree
+            spherical_polygon_b_vertex_index = spherical_polygon_c_vertex_index
+            spherical_polygon_c_vertex_index = (spherical_polygon_c_vertex_index + 1) % polyhedron_vertex_degree
 
-        if spherical_polygon_B_vertex_index == missing_edge_index: # Only 1 unknown dihedral, so first fan reaches missing edge
+        if spherical_polygon_b_vertex_index == missing_edge_index: # Only 1 unknown dihedral, so first fan reaches missing edge
             triangulation_complete = True
         
         # Second fan
-        spherical_polygon_A_vertex_index = spherical_polygon_B_vertex_index
-        spherical_polygon_B_vertex_index = (spherical_polygon_A_vertex_index + 1) % polyhedron_vertex_degree
-        spherical_polygon_C_vertex_index = (spherical_polygon_B_vertex_index + 1) % polyhedron_vertex_degree
+        spherical_polygon_a_vertex_index = spherical_polygon_b_vertex_index
+        spherical_polygon_b_vertex_index = (spherical_polygon_a_vertex_index + 1) % polyhedron_vertex_degree
+        spherical_polygon_c_vertex_index = (spherical_polygon_b_vertex_index + 1) % polyhedron_vertex_degree
         
-        for face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
-            if face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
+        for face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
+            if face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
                 central_triangle_arc_index_fan_2 = polyhedron_vertex.faces.index(face)
                 break
         
-        root_vertex_index_fan_2 = spherical_polygon_A_vertex_index
+        root_vertex_index_fan_2 = spherical_polygon_a_vertex_index
         
-        while polyhedron_vertex.edges[spherical_polygon_B_vertex_index].has_assigned_dihedral and not triangulation_complete:
+        while polyhedron_vertex.edges[spherical_polygon_b_vertex_index].has_assigned_dihedral and not triangulation_complete:
             
             spherical_polygon_arc_ab = None
-            for face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
                     spherical_polygon_arc_ab = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_ab_index = polyhedron_vertex.faces.index(face)
                     break
 
             spherical_polygon_arc_bc = None
-            for face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_C_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_c_vertex_index].faces:
                     spherical_polygon_arc_bc = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_bc_index = polyhedron_vertex.faces.index(face)
                     break
 
             spherical_polygon_arc_ca = None
-            for face in polyhedron_vertex.edges[spherical_polygon_C_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_c_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
                     spherical_polygon_arc_ca = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_ca_index = polyhedron_vertex.faces.index(face)
                     break
@@ -770,7 +770,7 @@ class SphericalTriangulation:
                 print("Error in computing spherical polygon with edges:")
                 for face in polyhedron_vertex.faces:
                     print(polyhedron_vertex.faces.index(face), ":",len(face.vertices))
-                print("Vertices", spherical_polygon_B_vertex_index, "and", spherical_polygon_C_vertex_index, "must share an edge")
+                print("Vertices", spherical_polygon_b_vertex_index, "and", spherical_polygon_c_vertex_index, "must share an edge")
                 print("And vertex internal angles:")
                 for edge in polyhedron_vertex.edges:
                     print(edge.has_assigned_dihedral)
@@ -782,57 +782,57 @@ class SphericalTriangulation:
 
             central_triangle_arc_index_fan_2 = current_arc_ca_index
 
-            new_triangle = SphericalTriangle(spherical_polygon_A_vertex_index, spherical_polygon_B_vertex_index, spherical_polygon_C_vertex_index, current_arc_ab_index, current_arc_bc_index, current_arc_ca_index)
+            new_triangle = SphericalTriangle(spherical_polygon_a_vertex_index, spherical_polygon_b_vertex_index, spherical_polygon_c_vertex_index, current_arc_ab_index, current_arc_bc_index, current_arc_ca_index)
         
-            if spherical_polygon_arc_ca is not None and spherical_polygon_arc_ab is not None and polyhedron_vertex.edges[spherical_polygon_A_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_A = polyhedron_vertex.edges[spherical_polygon_A_vertex_index].dihedral
-            if spherical_polygon_arc_ab is not None and spherical_polygon_arc_bc is not None and polyhedron_vertex.edges[spherical_polygon_B_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_B = polyhedron_vertex.edges[spherical_polygon_B_vertex_index].dihedral
-            if spherical_polygon_arc_bc is not None and spherical_polygon_arc_ca is not None and polyhedron_vertex.edges[spherical_polygon_C_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_C = polyhedron_vertex.edges[spherical_polygon_C_vertex_index].dihedral
+            if spherical_polygon_arc_ca is not None and spherical_polygon_arc_ab is not None and polyhedron_vertex.edges[spherical_polygon_a_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_a = polyhedron_vertex.edges[spherical_polygon_a_vertex_index].dihedral
+            if spherical_polygon_arc_ab is not None and spherical_polygon_arc_bc is not None and polyhedron_vertex.edges[spherical_polygon_b_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_b = polyhedron_vertex.edges[spherical_polygon_b_vertex_index].dihedral
+            if spherical_polygon_arc_bc is not None and spherical_polygon_arc_ca is not None and polyhedron_vertex.edges[spherical_polygon_c_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_c = polyhedron_vertex.edges[spherical_polygon_c_vertex_index].dihedral
             
             new_triangle.arc_ab = spherical_polygon_arc_ab
             new_triangle.arc_bc = spherical_polygon_arc_bc
             new_triangle.arc_ca = spherical_polygon_arc_ca
             
             self.triangles.append(new_triangle)
-            spherical_polygon_B_vertex_index = spherical_polygon_C_vertex_index
-            spherical_polygon_C_vertex_index = (spherical_polygon_C_vertex_index + 1) % polyhedron_vertex_degree
+            spherical_polygon_b_vertex_index = spherical_polygon_c_vertex_index
+            spherical_polygon_c_vertex_index = (spherical_polygon_c_vertex_index + 1) % polyhedron_vertex_degree
             
-        if spherical_polygon_B_vertex_index == missing_edge_index: # Only 2 unknown dihedrals, so second fan reaches missing edge
+        if spherical_polygon_b_vertex_index == missing_edge_index: # Only 2 unknown dihedrals, so second fan reaches missing edge
             triangulation_complete = True
         
         # Third fan
-        spherical_polygon_A_vertex_index = spherical_polygon_B_vertex_index
-        spherical_polygon_B_vertex_index = (spherical_polygon_A_vertex_index + 1) % polyhedron_vertex_degree
-        spherical_polygon_C_vertex_index = (spherical_polygon_B_vertex_index + 1) % polyhedron_vertex_degree
+        spherical_polygon_a_vertex_index = spherical_polygon_b_vertex_index
+        spherical_polygon_b_vertex_index = (spherical_polygon_a_vertex_index + 1) % polyhedron_vertex_degree
+        spherical_polygon_c_vertex_index = (spherical_polygon_b_vertex_index + 1) % polyhedron_vertex_degree
 
-        for face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
-            if face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
+        for face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
+            if face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
                 central_triangle_arc_index_fan_3 = polyhedron_vertex.faces.index(face)
                 break
 
-        root_vertex_index_fan_3 = spherical_polygon_A_vertex_index
+        root_vertex_index_fan_3 = spherical_polygon_a_vertex_index
 
-        while polyhedron_vertex.edges[spherical_polygon_B_vertex_index].has_assigned_dihedral and not triangulation_complete:
+        while polyhedron_vertex.edges[spherical_polygon_b_vertex_index].has_assigned_dihedral and not triangulation_complete:
             
             spherical_polygon_arc_ab = None
-            for face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
                     spherical_polygon_arc_ab = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_ab_index = polyhedron_vertex.faces.index(face)
                     break
 
             spherical_polygon_arc_bc = None
-            for face in polyhedron_vertex.edges[spherical_polygon_B_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_C_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_b_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_c_vertex_index].faces:
                     spherical_polygon_arc_bc = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_bc_index = polyhedron_vertex.faces.index(face)
                     break
 
             spherical_polygon_arc_ca = None
-            for face in polyhedron_vertex.edges[spherical_polygon_C_vertex_index].faces:
-                if face in polyhedron_vertex.edges[spherical_polygon_A_vertex_index].faces:
+            for face in polyhedron_vertex.edges[spherical_polygon_c_vertex_index].faces:
+                if face in polyhedron_vertex.edges[spherical_polygon_a_vertex_index].faces:
                     spherical_polygon_arc_ca = math.pi - 2.0 * math.pi / len(face.vertices)
                     current_arc_ca_index = polyhedron_vertex.faces.index(face)
                     break
@@ -845,7 +845,7 @@ class SphericalTriangulation:
                 print("Error in computing spherical polygon with edges:")
                 for face in polyhedron_vertex.faces:
                     print(polyhedron_vertex.faces.index(face), ":",len(face.vertices))
-                print("Vertices", spherical_polygon_B_vertex_index, "and", spherical_polygon_C_vertex_index, "must share an edge")
+                print("Vertices", spherical_polygon_b_vertex_index, "and", spherical_polygon_c_vertex_index, "must share an edge")
                 print("And vertex internal angles:")
                 for edge in polyhedron_vertex.edges:
                     print(edge.has_assigned_dihedral)
@@ -855,55 +855,55 @@ class SphericalTriangulation:
                 internal_arc_index += 1
                 current_arc_ca_index = internal_arc_index
 
-            new_triangle = SphericalTriangle(spherical_polygon_A_vertex_index, spherical_polygon_B_vertex_index, spherical_polygon_C_vertex_index, current_arc_ab_index, current_arc_bc_index, current_arc_ca_index)
+            new_triangle = SphericalTriangle(spherical_polygon_a_vertex_index, spherical_polygon_b_vertex_index, spherical_polygon_c_vertex_index, current_arc_ab_index, current_arc_bc_index, current_arc_ca_index)
             
             central_triangle_arc_index_fan_3 = current_arc_ca_index
         
-            if spherical_polygon_arc_ca is not None and spherical_polygon_arc_ab is not None and polyhedron_vertex.edges[spherical_polygon_A_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_A = polyhedron_vertex.edges[spherical_polygon_A_vertex_index].dihedral
-            if spherical_polygon_arc_ab is not None and spherical_polygon_arc_bc is not None and polyhedron_vertex.edges[spherical_polygon_B_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_B = polyhedron_vertex.edges[spherical_polygon_B_vertex_index].dihedral
-            if spherical_polygon_arc_bc is not None and spherical_polygon_arc_ca is not None and polyhedron_vertex.edges[spherical_polygon_C_vertex_index].has_assigned_dihedral:
-                new_triangle.internal_angle_C = polyhedron_vertex.edges[spherical_polygon_C_vertex_index].dihedral
+            if spherical_polygon_arc_ca is not None and spherical_polygon_arc_ab is not None and polyhedron_vertex.edges[spherical_polygon_a_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_a = polyhedron_vertex.edges[spherical_polygon_a_vertex_index].dihedral
+            if spherical_polygon_arc_ab is not None and spherical_polygon_arc_bc is not None and polyhedron_vertex.edges[spherical_polygon_b_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_b = polyhedron_vertex.edges[spherical_polygon_b_vertex_index].dihedral
+            if spherical_polygon_arc_bc is not None and spherical_polygon_arc_ca is not None and polyhedron_vertex.edges[spherical_polygon_c_vertex_index].has_assigned_dihedral:
+                new_triangle.internal_angle_c = polyhedron_vertex.edges[spherical_polygon_c_vertex_index].dihedral
         
             new_triangle.arc_ab = spherical_polygon_arc_ab
             new_triangle.arc_bc = spherical_polygon_arc_bc
             new_triangle.arc_ca = spherical_polygon_arc_ca
             
             self.triangles.append(new_triangle)
-            spherical_polygon_B_vertex_index = spherical_polygon_C_vertex_index
-            spherical_polygon_C_vertex_index = (spherical_polygon_C_vertex_index + 1) % polyhedron_vertex_degree
+            spherical_polygon_b_vertex_index = spherical_polygon_c_vertex_index
+            spherical_polygon_c_vertex_index = (spherical_polygon_c_vertex_index + 1) % polyhedron_vertex_degree
 
         if not triangulation_complete: # 3 unknown dihedrals, so need to add central triangle between them which will need to be solved via SSS and then propagate to solve the rest of the fan, in most cases this yields ambiguous solutions.
-            central_triangle_vertex_index_A = root_vertex_index_fan_1
-            central_triangle_vertex_index_B = root_vertex_index_fan_2
-            central_triangle_vertex_index_C = root_vertex_index_fan_3
+            central_triangle_vertex_index_a = root_vertex_index_fan_1
+            central_triangle_vertex_index_b = root_vertex_index_fan_2
+            central_triangle_vertex_index_c = root_vertex_index_fan_3
 
             central_triangle_arc_ab = None
             central_triangle_arc_ab_index = central_triangle_arc_index_fan_1
-            for face in polyhedron_vertex.edges[central_triangle_vertex_index_A].faces:
-                if face in polyhedron_vertex.edges[central_triangle_vertex_index_B].faces:
+            for face in polyhedron_vertex.edges[central_triangle_vertex_index_a].faces:
+                if face in polyhedron_vertex.edges[central_triangle_vertex_index_b].faces:
                     central_triangle_arc_ab = math.pi - 2.0 * math.pi / len(face.vertices)
                     central_triangle_arc_ab_index = polyhedron_vertex.faces.index(face)
                     break
 
             central_triangle_arc_bc = None
             central_triangle_arc_bc_index = central_triangle_arc_index_fan_2
-            for face in polyhedron_vertex.edges[central_triangle_vertex_index_B].faces:
-                if face in polyhedron_vertex.edges[central_triangle_vertex_index_C].faces:
+            for face in polyhedron_vertex.edges[central_triangle_vertex_index_b].faces:
+                if face in polyhedron_vertex.edges[central_triangle_vertex_index_c].faces:
                     central_triangle_arc_bc = math.pi - 2.0 * math.pi / len(face.vertices)
                     central_triangle_arc_bc_index = polyhedron_vertex.faces.index(face)
                     break
 
             central_triangle_arc_ca = None
             central_triangle_arc_ca_index = central_triangle_arc_index_fan_3
-            for face in polyhedron_vertex.edges[central_triangle_vertex_index_C].faces:
-                if face in polyhedron_vertex.edges[central_triangle_vertex_index_A].faces:
+            for face in polyhedron_vertex.edges[central_triangle_vertex_index_c].faces:
+                if face in polyhedron_vertex.edges[central_triangle_vertex_index_a].faces:
                     central_triangle_arc_ca = math.pi - 2.0 * math.pi / len(face.vertices)
                     central_triangle_arc_ca_index = polyhedron_vertex.faces.index(face)
                     break
 
-            central_triangle = SphericalTriangle(central_triangle_vertex_index_A, central_triangle_vertex_index_B, central_triangle_vertex_index_C, central_triangle_arc_ab_index, central_triangle_arc_bc_index, central_triangle_arc_ca_index)
+            central_triangle = SphericalTriangle(central_triangle_vertex_index_a, central_triangle_vertex_index_b, central_triangle_vertex_index_c, central_triangle_arc_ab_index, central_triangle_arc_bc_index, central_triangle_arc_ca_index)
             
             central_triangle.arc_ab = central_triangle_arc_ab
             central_triangle.arc_bc = central_triangle_arc_bc
@@ -994,9 +994,9 @@ def draw_vertex_triangulation(triangulation: SphericalTriangulation, out_path: s
 
     # draw triangulation diagonals (use SphericalTriangle objects)
     for sph_tri in triangulation.triangles:
-        a = sph_tri.vertex_index_A
-        b = sph_tri.vertex_index_B
-        c = sph_tri.vertex_index_C
+        a = sph_tri.vertex_index_a
+        b = sph_tri.vertex_index_b
+        c = sph_tri.vertex_index_c
         for u, v in ((a, b), (b, c), (c, a)):
             # skip polygon boundary edges
             if (v == (u + 1) % n) or (u == (v + 1) % n):

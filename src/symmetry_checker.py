@@ -37,14 +37,14 @@ def build_vertex_graph_with_dihedrals(solution: RegularFacedPolyhedron) -> nx.Gr
       - Nodes: vertices (with attributes valence and face_type_multiset)
       - Edges: edges with dihedral angle attributes (normalized to [0, 2π))
     """
-    G = nx.Graph()
+    graph = nx.Graph()
     
-    for v_idx, v in enumerate(solution.vertices):
-        valence = len(v.edges)
-        face_types = sorted([len(f.vertices) for f in v.faces])
+    for v_idx, vertex in enumerate(solution.vertices):
+        valence = len(vertex.edges)
+        face_types = sorted([len(f.vertices) for f in vertex.faces])
         face_type_str = str(face_types)
         
-        G.add_node(v_idx, valence=valence, face_type_multiset=face_type_str)
+        graph.add_node(v_idx, valence=valence, face_type_multiset=face_type_str)
     
     for e in solution.edges:
         v0_idx = None
@@ -61,9 +61,9 @@ def build_vertex_graph_with_dihedrals(solution: RegularFacedPolyhedron) -> nx.Gr
             raise ValueError(f"Edge vertices not found in vertex list: {e.vertices[0].index}, {e.vertices[1].index}")
         
         dihedral_normalized = _wrap_0_tau(e.dihedral)
-        G.add_edge(v0_idx, v1_idx, dihedral=dihedral_normalized)
+        graph.add_edge(v0_idx, v1_idx, dihedral=dihedral_normalized)
     
-    return G
+    return graph
 
 
 def has_nontrivial_automorphism_with_dihedrals(
@@ -87,8 +87,8 @@ def has_nontrivial_automorphism_with_dihedrals(
       (has_automorphism, mapping)
       where mapping is None or the vertex permutation dict depending on return_mapping
     """
-    H = build_vertex_graph_with_dihedrals(poly)
-    identity = {n: n for n in H.nodes()}
+    dihedral_graph = build_vertex_graph_with_dihedrals(poly)
+    identity = {n: n for n in dihedral_graph.nodes()}
     
     def node_match(n1: Dict[str, Any], n2: Dict[str, Any]) -> bool:
         """Match nodes by valence and face type multiset."""
@@ -101,7 +101,7 @@ def has_nontrivial_automorphism_with_dihedrals(
         d2 = e2.get('dihedral', 0.0)
         return _ang_dist(d1, d2) < dihedral_tol
     
-    gm = GraphMatcher(H, H, node_match=node_match, edge_match=edge_match)
+    gm = GraphMatcher(dihedral_graph, dihedral_graph, node_match=node_match, edge_match=edge_match)
 
     for phi in gm.isomorphisms_iter():
         if phi != identity:
