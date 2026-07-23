@@ -342,7 +342,7 @@ class SphericalTriangle:
 class SphericalTriangulation:
     """
     Abstract representation of a triangulated spherical polygon. Each triangle is represented as a SphericalTriangle object.
-    Spherical triangles contain indices for their arcs and vertices to indicated which arcs/vertices of the spherical polygon they correspond to.
+    Spherical triangles contain indices for their arcs and vertices to indicate which arcs/vertices of the spherical polygon they correspond to.
     Solving for a spherical triangulation involves filling in the missing arc lengths and internal angles of each spherical triangle.
     Solved arcs and angles are stored in the SphericalTriangle objects.
     Once solved, arcs with a certain index can be common between multiple triangles, and the internal angles at vertices can be summed to determine the dihedral angles at edges of the polyhedron.
@@ -357,7 +357,7 @@ class SphericalTriangulation:
     solvable: bool = True
     solution_valid: bool = True
 
-    def get_dihedral(self, index=0) -> Optional[float]: # Assumes triangulation has been solved. Missing edge dihedral assumed to be at index 0
+    def get_dihedral(self, index=0) -> Optional[float]: # Assumes triangulation has been solved; the missing edge defaults to index 0.
         """
         After solving the triangulation, compute the dihedral angle at the specified missing edge by summing the internal angles at the corresponding vertex.
         """
@@ -958,18 +958,12 @@ def make_test_vertex(n: int = 20, known_count: int = 17, seed: int = 0) -> Verte
 
 
 def draw_vertex_triangulation(triangulation: SphericalTriangulation, out_path: str = "tri_debug.png", missing_edge: Optional[Edge] = None) -> None:
-    """Draw a flat debug visualization of the spherical triangulation for
-    `vertex` and save to `out_path`.
+    """Draw a flat debug visualization of a spherical triangulation.
 
-    Visualization notes (updated):
-      - Polygon edges (arc side lengths) are known and drawn uniformly.
-      - Dihedral (angle) unknown/known status is shown at each polygon
-        vertex as a colored marker: green = known, red = unknown.
-      - If `missing_edge` is provided (or auto-selected), attempt to use
-        the ABC fan triangulation built from that missing dihedral; if
-        unavailable, fall back to the simple fan triangulation.
+    Polygon edges are drawn uniformly, triangulation diagonals are shown in
+    gray, and each polygon vertex is marked green or red according to whether
+    its corresponding dihedral is known. The `missing_edge` argument is unused.
     """
-    # `triangulation` now stores SphericalTriangle objects and a dihedrals list.
     # Use the dihedrals list to determine known/unknown dihedrals.
     if not hasattr(triangulation, 'dihedrals'):
         raise ValueError("Triangulation object missing 'dihedrals' attribute")

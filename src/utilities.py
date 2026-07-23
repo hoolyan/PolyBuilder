@@ -13,8 +13,8 @@ def format_face_types(face_str_list: List[str]) -> str:
     Convert a list of face type strings into a human-readable summary.
     
     Example:
-        ['triangle', 'triangle', 'square', 'pentagon'] 
-        -> "3 triangles, 2 squares, 1 pentagon"
+        ['triangle', 'triangle', 'square', 'pentagon']
+        -> "[2 triangles, 1 square, 1 pentagon]"
     
     Args:
         face_str_list: List of face type strings (e.g., 'triangle', 'square', etc.)
@@ -61,7 +61,7 @@ def format_dihedral_degrees(dihedral_set: List[Optional[float]], precision: int 
     
     Args:
         dihedral_set: List of dihedral angles in radians, or None for unassigned angles.
-        precision: Number of decimal places to round to (default: 4).
+        precision: Number of decimal places to round to (default: 3).
     
     Returns:
         List of dihedral angles in degrees, rounded to specified precision, or None for unassigned.

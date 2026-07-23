@@ -69,7 +69,7 @@ def build_vertex_graph_with_dihedrals(solution: RegularFacedPolyhedron) -> nx.Gr
 def has_nontrivial_automorphism_with_dihedrals(
     poly: RegularFacedPolyhedron,
     *,
-    dihedral_tol: float = 1e-12,  # <-- important to be tight
+    dihedral_tol: float = 1e-12,
     return_mapping: bool = False,
 ) -> bool | Tuple[bool, Optional[Dict[int, int]]]:
     """
@@ -81,11 +81,11 @@ def has_nontrivial_automorphism_with_dihedrals(
     Args:
       poly: RegularFacedPolyhedron to check
       dihedral_tol: Tolerance for dihedral angle matching
-      return_mapping: If True, return the mapping dict; if False, return None for mapping
-    
+      return_mapping: If True, return `(has_automorphism, mapping)`.
+        If False, return only the boolean classification.
+
     Returns:
-      (has_automorphism, mapping)
-      where mapping is None or the vertex permutation dict depending on return_mapping
+      A boolean, or a `(boolean, mapping)` tuple when `return_mapping` is True.
     """
     dihedral_graph = build_vertex_graph_with_dihedrals(poly)
     identity = {n: n for n in dihedral_graph.nodes()}

@@ -28,7 +28,7 @@ PolyBuilder is a numerical research program, not a formal proof assistant. Its r
 - **Self-intersection checking is optional and numerical.** With `--perform-self-intersection-check`, PolyBuilder performs pairwise convex polygon checks, allowing only the shared edges and vertices implied by the topology. Clear crossings and coplanar overlaps are rejected. Contacts wholly inside the numerical ambiguity band are accepted rather than risking a false rejection, so exact tangencies or extremely near contacts may still warrant independent inspection.
 - **Calculations use floating-point tolerances.** Closure, regularity, equality of dihedral angles, and symmetry preservation are tested numerically.
 - **Optional limits can make a run incomplete.** Using `--combination-limit`, a graph subset, or a face-set filter intentionally restricts the search.
-- **Checkpoint compatibility is only partially enforced.** The program verifies `face-count`, `g6-path`, and the self-intersection setting when resuming. Use the same remaining search settings unless you deliberately intend to combine different runs.
+- **Checkpoint compatibility is only partially enforced.** The program verifies only `face-count` and `g6-path` when resuming.
 
 For the supplied `face-count = 4` through `face-count = 9` graph sets, the propagation method solves every graph except the octahedral graph. With the optional self-intersection check enabled, the search leaves two distinct simple asymmetric realizations with nine faces and none with fewer than nine among the graphs solved by the method.
 
@@ -101,7 +101,7 @@ python polybuilder.py --face-count 9 --g6-path input_graphs_f9.g6 --export-objs 
 | `--export-invalid-objs` | Export rejected constructed realizations for debugging. |
 | `--display-dihedral-solutions` | Print the dihedral angles associated with reported solutions. |
 | `--show-progress-details` | Print detailed propagation and validation information. |
-| `--save-progress PATH` | Save a JSON checkpoint to `PATH` after each processed graph and at the end of the run. |
+| `--save-progress PATH` | Save a JSON checkpoint to `PATH` during processing and at the end of the run. |
 | `--resume-from PATH` | Resume from a checkpoint. If `--save-progress` is omitted, updates are written back to the same file. |
 
 ## Examples
@@ -158,14 +158,6 @@ During a run, PolyBuilder reports graphs in four categories:
 - **Graphs with asymmetric realizations:** at least one constructed realization had no nontrivial automorphism preserving the tested face and dihedral data.
 
 OBJ files are written only when an export flag is supplied. Checkpoint files contain run settings, the next graph index, and the accumulated result categories in human-readable JSON.
-
-## Tests
-
-Run the unit and integration tests from the project root with:
-
-```bash
-python -m unittest discover -s tests -v
-```
 
 ## Project Structure
 

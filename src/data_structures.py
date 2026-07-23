@@ -175,6 +175,9 @@ class RegularFacedPolyhedron:
                 x=f.x,
                 y=f.y,
                 z=f.z,
+                normal_x=f.normal_x,
+                normal_y=f.normal_y,
+                normal_z=f.normal_z,
                 constructed=f.constructed
             )
             f_map[f.index] = f_copy
@@ -393,10 +396,10 @@ def stream_g6_graphs(path: str, start_index: int = 0, end_index: int = None) -> 
 
 def scout_face_set(graph: nx.Graph) -> Dict[int, int]:
     """
-    Given a dict mapping face types (e.g., "triangle", "square", "pentagon") to counts,
-    return a concise string representation like "[8 triangles, 3 squares, 2 pentagons]".
-    
-    The face types are sorted by vertex count (e.g., triangle before square).
+    Return the multiset of face sizes encoded by a dual graph.
+
+    Each dual-graph node represents one polyhedron face, so its degree is the
+    number of sides of that face. The result maps side count to face count.
     """
     face_type_counts: Dict[int, int] = {}
     for node in graph.nodes():
@@ -657,9 +660,20 @@ def create_polyhedron_from_graph(graph: nx.Graph) -> RegularFacedPolyhedron:
                 
                 # For consistent winding: if current_face traverses forward, other_face should traverse backward
                 if current_traverses_forward == other_traverses_forward:
-                    # Winding is inconsistent - need to flip other_face's vertex order
+                    # Reverse the vertex cycle and rebuild the edge cycle so
+                    # edge[i] still joins vertex[i] to vertex[(i + 1) % n].
                     other_face.vertices.reverse()
-                    other_face.edges.reverse()
+                    edge_by_vertices = {
+                        frozenset((face_edge.vertices[0].index, face_edge.vertices[1].index)): face_edge
+                        for face_edge in other_face.edges
+                    }
+                    other_face.edges = [
+                        edge_by_vertices[frozenset((
+                            other_face.vertices[i].index,
+                            other_face.vertices[(i + 1) % len(other_face.vertices)].index,
+                        ))]
+                        for i in range(len(other_face.vertices))
+                    ]
 
     poly = RegularFacedPolyhedron(faces=faces, edges=edges, vertices=vertices)
 

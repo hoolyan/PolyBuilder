@@ -15,16 +15,12 @@ from data_structures import Vertex, Edge, Face, RegularFacedPolyhedron, v_normal
 
 def construct_polyhedron_realization(solution: RegularFacedPolyhedron) -> RegularFacedPolyhedron:
     """
-    Construct polyhedron by building individual face transforms along BFS tree paths.
-    
-    For each face, we:
-    1. Place it as a regular polygon in its local coordinate system
-    2. Iteratively fold it along the path back to the root face
-    3. Apply dihedral rotations around each hinge edge
-    4. Project the final 3D coordinates back into the solution
-    
-    This approach is more robust than BFS folding because each face is built
-    independently along its own path, avoiding error accumulation issues.
+    Construct a polyhedron by placing every face as an isolated regular polygon
+    and folding the faces outward from a root face along a spanning tree.
+
+    Each face is transformed as a rigid polygon. Coordinates reached through
+    different tree paths are reconciled when they are copied back into the shared
+    polyhedron data structure, and the validator checks global closure.
     """
 
     def translate_face(face: Face, translation: np.ndarray) -> None:
@@ -463,15 +459,20 @@ def export_regular_faced_polyhedron_to_obj(model: RegularFacedPolyhedron, output
 
 def is_valid_realization(solution: RegularFacedPolyhedron, strict=False) -> Tuple[bool, str]:
     """
-    Validate that a realization has unit edges and regular face geometry.
-    Non-strict mode only ensures faces are regular polygons.
-    Strict mode also checks for other geometric issues that violate the definitions of a valid polyhedron (edges shared by more than two faces, overlapping vertices, etc.)
-    Full polygon-polygon self-intersection testing is provided separately by self_intersection_checker.py.
+    Validate that a realization is complete and has unit edges and regular-face
+    radius geometry. Strict mode additionally rejects coincident vertex, edge-
+    midpoint, and face-center features. Full polygon-polygon self-intersection
+    testing is provided separately by self_intersection_checker.py.
     """
+    if not all(vertex.constructed for vertex in solution.vertices):
+        return False, "Realization has unconstructed vertices."
+    if not all(edge.constructed for edge in solution.edges):
+        return False, "Realization has unconstructed edges."
+    if not all(face.constructed for face in solution.faces):
+        return False, "Realization has unconstructed faces."
+
     # Unit edges
     for e in solution.edges:
-        if not all(v.constructed for v in e.vertices):
-            continue
         p0 = e.vertices[0].pos
         p1 = e.vertices[1].pos
         edge_length = v_norm(p0 - p1)
@@ -482,7 +483,7 @@ def is_valid_realization(solution: RegularFacedPolyhedron, strict=False) -> Tupl
     if strict:
         for v in solution.vertices:
             for other_v in solution.vertices:
-                if v.index == other_v.index or not v.constructed or not other_v.constructed:
+                if v.index == other_v.index:
                     continue
                 if np.linalg.norm(v.pos - other_v.pos) < 1e-10:
                     return False, f"Vertices {v.index} and {other_v.index} are overlapping."
@@ -494,7 +495,7 @@ def is_valid_realization(solution: RegularFacedPolyhedron, strict=False) -> Tupl
                     return False, f"Vertex {v.index} and Face {f.index} are overlapping."
         for e in solution.edges:
             for other_e in solution.edges:
-                if e.index == other_e.index or not e.constructed or not other_e.constructed:
+                if e.index == other_e.index:
                     continue
                 if np.linalg.norm(e.pos - other_e.pos) < 1e-10:
                     return False, f"Edges {e.index} and {other_e.index} are overlapping."
@@ -503,22 +504,18 @@ def is_valid_realization(solution: RegularFacedPolyhedron, strict=False) -> Tupl
                     return False, f"Edge {e.index} and Face {f.index} are overlapping."
         for f in solution.faces:
             for other_f in solution.faces:
-                if f.index == other_f.index or not f.constructed or not other_f.constructed:
+                if f.index == other_f.index:
                     continue
                 if np.linalg.norm(f.pos - other_f.pos) < 1e-10:
                     return False, f"Faces {f.index} and {other_f.index} are overlapping."
         
     # Face radii checks
     for f in solution.faces:
-        if not f.constructed:
-            continue
         n = len(f.vertices)
         if n < 3:
             return False, f"Face {f.index} has less than 3 vertices."
         circumradius = 1.0 / (2.0 * math.sin(math.pi / n))
         for v in f.vertices:
-            if not v.constructed:
-                continue
             r = v_norm(v.pos - f.pos)
             if abs(r - circumradius) > 1e-4:
                 return False, f"Vertex {v.index} of face {f.index} is at incorrect distance from face center: {r} (expected {circumradius})"
