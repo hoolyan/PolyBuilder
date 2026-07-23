@@ -466,7 +466,7 @@ def is_valid_realization(solution: RegularFacedPolyhedron, strict=False) -> Tupl
     Validate that a realization has unit edges and regular face geometry.
     Non-strict mode only ensures faces are regular polygons.
     Strict mode also checks for other geometric issues that violate the definitions of a valid polyhedron (edges shared by more than two faces, overlapping vertices, etc.)
-    Self-intersection currently not checked, but could be added in the future, perhaps as a separate category of strictness level.
+    Full polygon-polygon self-intersection testing is provided separately by self_intersection_checker.py.
     """
     # Unit edges
     for e in solution.edges:

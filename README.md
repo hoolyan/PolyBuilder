@@ -14,8 +14,9 @@ For each 3-connected simple planar input graph, PolyBuilder:
 4. Propagates known dihedral angles and branches when two discrete local solutions are possible.
 5. Constructs 3D coordinates for each complete dihedral assignment.
 6. Rejects assignments that do not close with unit-length edges and regular face geometry.
-7. Searches for nontrivial graph automorphisms that preserve face data and dihedral angles.
-8. Optionally exports constructed realizations as OBJ files.
+7. Optionally rejects clear polygon-polygon self-intersections while allowing the shared edges and vertices required by the polyhedron topology.
+8. Searches for nontrivial graph automorphisms that preserve face data and dihedral angles.
+9. Optionally exports constructed realizations as OBJ files.
 
 The method supports convex and nonconvex dihedral configurations. It is intended for exhaustive computational searches over graphs that become discretely solvable through the vertex-dihedral propagation process.
 
@@ -24,12 +25,12 @@ The method supports convex and nonconvex dihedral configurations. It is intended
 PolyBuilder is a numerical research program, not a formal proof assistant. Its results should be interpreted with the following limitations in mind:
 
 - **Propagation must become discrete.** Some graphs may remain locally flexible because no vertex initially has a finite set of dihedral completions. PolyBuilder reports these graphs as unsolved rather than declaring them impossible. Among the supplied graph sets with at most nine faces, the octahedral graph is the only graph with this behavior.
-- **Self-intersection is not checked exhaustively.** The current strict validation detects coincident vertices, edge midpoints, and face centers, but it does not perform a complete polygon-polygon intersection test. A geometrically closed output may therefore still represent a self-intersecting surface and should be checked separately when simplicity matters.
+- **Self-intersection checking is optional and numerical.** With `--perform-self-intersection-check`, PolyBuilder performs pairwise convex polygon checks, allowing only the shared edges and vertices implied by the topology. Clear crossings and coplanar overlaps are rejected. Contacts wholly inside the numerical ambiguity band are accepted rather than risking a false rejection, so exact tangencies or extremely near contacts may still warrant independent inspection.
 - **Calculations use floating-point tolerances.** Closure, regularity, equality of dihedral angles, and symmetry preservation are tested numerically.
 - **Optional limits can make a run incomplete.** Using `--combination-limit`, a graph subset, or a face-set filter intentionally restricts the search.
-- **Checkpoint compatibility is only partially enforced.** The program currently verifies `face-count` and `g6-path` when resuming. Use the same remaining search settings unless you deliberately intend to combine different runs.
+- **Checkpoint compatibility is only partially enforced.** The program verifies `face-count`, `g6-path`, and the self-intersection setting when resuming. Use the same remaining search settings unless you deliberately intend to combine different runs.
 
-For the supplied `face-count = 4` through `face-count = 9` graph sets, the propagation method solves every graph except the octahedral graph. After separately excluding self-intersecting outputs, the search produces two distinct simple asymmetric realizations with nine faces and none with fewer than nine among the graphs solved by the method.
+For the supplied `face-count = 4` through `face-count = 9` graph sets, the propagation method solves every graph except the octahedral graph. With the optional self-intersection check enabled, the search leaves two distinct simple asymmetric realizations with nine faces and none with fewer than nine among the graphs solved by the method.
 
 ## Requirements
 
@@ -93,7 +94,8 @@ python polybuilder.py --face-count 9 --g6-path input_graphs_f9.g6 --export-objs 
 | `--combination-limit N` | Stop further branching for a graph when the number of partial solutions exceeds `N`. This may leave that graph incompletely searched. |
 | `--specify-face-set SPEC` | Process only graphs with a specified multiset of face types, such as `3:8,4:3,5:2`. |
 | `--allow-coplanar-dihedrals` | Permit dihedral angles of 180 degrees. These degenerate coplanar configurations are rejected by default. |
-| `--disable-overlap-check` | Disable the limited coincidence check used during realization validation. This flag does not refer to a complete self-intersection test. |
+| `--disable-overlap-check` | Disable the limited coincidence check used during realization validation. This is separate from the optional polygon-polygon check. |
+| `--perform-self-intersection-check` | Reject realizations with clear polygon-polygon self-intersections. Disabled by default, so existing runs are unchanged unless this flag is supplied. |
 | `--perform-asymmetry-check` | Display the final summary of asymmetric realizations. Symmetry classification is currently performed internally for all constructed realizations regardless of this flag. |
 | `--export-objs` | Export accepted realizations as OBJ files. |
 | `--export-invalid-objs` | Export rejected constructed realizations for debugging. |
@@ -108,6 +110,12 @@ python polybuilder.py --face-count 9 --g6-path input_graphs_f9.g6 --export-objs 
 
 ```bash
 python polybuilder.py --face-count 9 --g6-path input_graphs_f9.g6 --perform-asymmetry-check --display-dihedral-solutions
+```
+
+### Reject self-intersecting realizations
+
+```bash
+python polybuilder.py --face-count 9 --g6-path input_graphs_f9.g6 --perform-self-intersection-check --perform-asymmetry-check
 ```
 
 ### Export accepted and rejected constructions
@@ -151,6 +159,14 @@ During a run, PolyBuilder reports graphs in four categories:
 
 OBJ files are written only when an export flag is supplied. Checkpoint files contain run settings, the next graph index, and the accumulated result categories in human-readable JSON.
 
+## Tests
+
+Run the unit and integration tests from the project root with:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ## Project Structure
 
 ### `polybuilder.py`
@@ -165,6 +181,9 @@ Implements spherical triangles, spherical triangulations, local solvability test
 ### `realization_constructor.py`
 Builds regular polygon faces in 3D, folds them according to assigned dihedrals, validates closure and regular face geometry, and exports OBJ files.
 
+### `self_intersection_checker.py`
+Performs the optional conservative pairwise polygon-polygon intersection test, distinguishing geometric crossings from topologically shared edges and vertices.
+
 ### `symmetry_checker.py`
 Uses NetworkX graph isomorphism to search for nonidentity automorphisms that preserve vertex data and edge dihedral angles.
 
@@ -172,7 +191,7 @@ Uses NetworkX graph isomorphism to search for nonidentity automorphisms that pre
 Saves and loads resumable JSON checkpoints.
 
 ### `utilities.py`
-Contains formatting, face-set parsing, and object-size helpers.
+Contains formatting and face-set parsing helpers.
 
 ## Author
 

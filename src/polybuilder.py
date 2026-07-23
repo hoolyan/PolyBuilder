@@ -23,12 +23,13 @@ import networkx as nx
 
 from tqdm import tqdm
 
-from utilities import *
-from data_structures import *
-from checkpoint import *
-from dihedral_solver import *
-from realization_constructor import *
-from symmetry_checker import *
+from utilities import format_face_types, format_dihedral_degrees, parse_face_set
+from data_structures import RegularFacedPolyhedron, scout_g6_graph_count, stream_g6_graphs, scout_face_set, create_polyhedron_from_graph
+from checkpoint import CheckpointData, save_checkpoint, load_checkpoint
+from dihedral_solver import num_solutions, has_valid_dihedrals, extend_solved_vertices
+from realization_constructor import construct_polyhedron_realization, export_regular_faced_polyhedron_to_obj, is_valid_realization
+from symmetry_checker import has_nontrivial_automorphism_with_dihedrals
+from self_intersection_checker import find_self_intersection
 
 
 # ============================================================
@@ -44,6 +45,7 @@ def main():
     parser.add_argument("--specify-face-set", type=str, default=None, help="Only process graphs with a specific set of face types. Format: 'sides:count,sides:count,...' (e.g., '3:8,4:3,5:2' for 8 triangles, 3 squares, 2 pentagons)")
     parser.add_argument("--allow-coplanar-dihedrals", action="store_true", help="Allow dihedrals of 180 degrees, which correspond to coplanar faces.")
     parser.add_argument("--disable-overlap-check", action="store_true", help="Disable the check for overlapping features during construction.")
+    parser.add_argument("--perform-self-intersection-check", action="store_true", help="Reject realizations with clear polygon-polygon self-intersections. Disabled by default.")
     parser.add_argument("--perform-asymmetry-check", action="store_true", help="Perform the check for symmetries in the realized polyhedra.")
     parser.add_argument("--show-progress-details", action="store_true", help="Print progress info")
     parser.add_argument("--display-dihedral-solutions", action="store_true", help="Display dihedral solutions for each graph in each category after processing is complete.")
@@ -67,6 +69,7 @@ def main():
     combination_limit = args.combination_limit
     allow_coplanar_dihedrals = args.allow_coplanar_dihedrals
     disable_overlap_check = args.disable_overlap_check
+    perform_self_intersection_check = args.perform_self_intersection_check
     perform_asymmetry_check = args.perform_asymmetry_check
     resume_from_path = args.resume_from
     save_progress_path = args.save_progress
@@ -332,6 +335,11 @@ def main():
             s = solution_list[s_index]
             model = construct_polyhedron_realization(s)
             valid, validation_message = is_valid_realization(model, not disable_overlap_check)
+            if valid and perform_self_intersection_check:
+                self_intersection_message = find_self_intersection(model)
+                if self_intersection_message is not None:
+                    valid = False
+                    validation_message = self_intersection_message
             if valid:
                 realized_solutions.append(model)
             else:
@@ -367,6 +375,7 @@ def main():
                     "combination_limit": combination_limit,
                     "export_objs": export_objs,
                     "show_progress_details": show_progress_details,
+                    "perform_self_intersection_check": perform_self_intersection_check,
                 },
                 current_graph_index=next_gi,
                 graphs_unsolved=graphs_unsolved_indices_faces_and_solutions,
@@ -388,6 +397,7 @@ def main():
                 "combination_limit": combination_limit,
                 "export_objs": export_objs,
                 "show_progress_details": show_progress_details,
+                "perform_self_intersection_check": perform_self_intersection_check,
             },
             current_graph_index=next_gi,
             graphs_unsolved=graphs_unsolved_indices_faces_and_solutions,

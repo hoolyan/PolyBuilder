@@ -79,7 +79,7 @@ def has_nontrivial_automorphism_with_dihedrals(
       - Dihedral angles (within tolerance)
     
     Args:
-      solution: RegularFacedPolyhedron to check
+      poly: RegularFacedPolyhedron to check
       dihedral_tol: Tolerance for dihedral angle matching
       return_mapping: If True, return the mapping dict; if False, return None for mapping
     
